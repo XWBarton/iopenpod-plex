@@ -10,7 +10,7 @@
 
 This is a fork of [TheRealSavi/iOpenPod](https://github.com/TheRealSavi/iOpenPod) that adds **Plex Media Server integration**, **Pinepods podcast sync**, an **iPod file browser**, and a **light theme** on top of the core iPod sync engine.
 
-![Album Browser](screenshots/albums.png)
+![iOpenPod](screenshots/main.png)
 
 ---
 
@@ -84,8 +84,6 @@ pip install requests  # Pinepods sync
 3. **Browse** — flip through albums, tracks, playlists, and artwork
 4. **Sync** — choose your music folder, Plex library, or Pinepods feed; review what'll change and hit go
 
-![Device Picker](screenshots/devicepicker.png)
-
 ---
 
 ## Core Features
@@ -98,19 +96,11 @@ pip install requests  # Pinepods sync
 
 **Review before you commit.** Every sync shows you exactly what's about to happen — new tracks, removals, metadata updates — with checkboxes for each item. Nothing changes until you say so.
 
-![Sync Review](screenshots/syncreview.png)
-
 **Playlists and smart playlists.** Browse and manage standard playlists. Smart playlists with rule-based filtering are supported too.
-
-![Playlists](screenshots/playlists.png)
 
 **Backups with one-click restore.** A snapshot of your iPod database is saved before every sync. If something goes wrong, roll back instantly.
 
-![Backups](screenshots/backups.png)
-
 **Configurable.** Tweak transcoding settings, sync behavior, theme, and more from the settings page.
-
-![Settings](screenshots/settings.png)
 
 ---
 
