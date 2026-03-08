@@ -48,7 +48,12 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        "PyQt6.QtLocation",
+        "PyQt6.QtPositioning",
+        "PyQt6.QtBluetooth",
+        "PyQt6.QtNfc",
+    ],
     noarchive=False,
 )
 
