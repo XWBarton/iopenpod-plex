@@ -692,7 +692,7 @@ class SmartPlaylistEditor(QFrame):
         # ── Header: Name ──────────────────────────────────────
         header = QHBoxLayout()
         header.setSpacing(8)
-        icon = QLabel("🧠")
+        icon = QLabel("◈")
         icon.setFont(QFont(FONT_FAMILY, 18))
         icon.setStyleSheet("background: transparent; border: none;")
         header.addWidget(icon)
@@ -1119,7 +1119,7 @@ class RegularPlaylistEditor(QFrame):
         # ── Header: Name ──────────────────────────────────────
         header = QHBoxLayout()
         header.setSpacing(8)
-        icon = QLabel("📋")
+        icon = QLabel("≡")
         icon.setFont(QFont(FONT_FAMILY, 18))
         icon.setStyleSheet("background: transparent; border: none;")
         header.addWidget(icon)
@@ -1190,7 +1190,7 @@ class RegularPlaylistEditor(QFrame):
 
         # ── Info area (for future options) ────────────────────
         info_label = QLabel(
-            "💡 Tracks can be added to this playlist from the music browser."
+            "◎ Tracks can be added to this playlist from the music browser."
         )
         info_label.setFont(QFont(FONT_FAMILY, 9))
         info_label.setStyleSheet(
@@ -1380,5 +1380,5 @@ class NewPlaylistDialog(QDialog):
 
 
 # Re-export icons used by playlist browser
-_ICON_REGULAR = "📋"
-_ICON_SMART = "🧠"
+_ICON_REGULAR = "≡"
+_ICON_SMART = "◈"

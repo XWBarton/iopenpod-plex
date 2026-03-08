@@ -701,6 +701,14 @@ class SettingsPage(QWidget):
         # ── APPEARANCE section ──────────────────────────────────────────────
         layout.addWidget(self._section_label("APPEARANCE"))
 
+        self.theme = ComboRow(
+            "Theme",
+            "Light or dark UI. Takes effect on next launch.",
+            options=["Dark", "Light"],
+            current="Dark",
+        )
+        layout.addWidget(self.theme)
+
         self.show_art = ToggleRow(
             "Track List Artwork",
             "Show album art thumbnails next to tracks in the list view.",
@@ -811,6 +819,11 @@ class SettingsPage(QWidget):
         else:
             self.listenbrainz_token_row.set_disconnected()
 
+        theme_text = "Light" if s.theme == "light" else "Dark"
+        idx = self.theme.combo.findText(theme_text)
+        if idx >= 0:
+            self.theme.combo.setCurrentIndex(idx)
+
         self.show_art.value = s.show_art_in_tracklist
         self.transcode_cache_dir.value = s.transcode_cache_dir
         self.settings_dir.value = s.settings_dir
@@ -897,6 +910,7 @@ class SettingsPage(QWidget):
 
         s.scrobble_on_sync = self.scrobble_on_sync.value
 
+        s.theme = "light" if self.theme.value == "Light" else "dark"
         s.show_art_in_tracklist = self.show_art.value
         s.transcode_cache_dir = self.transcode_cache_dir.value
         s.settings_dir = self.settings_dir.value

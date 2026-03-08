@@ -142,32 +142,46 @@ def run_pyqt_app():
     from GUI.fonts import load_bundled_fonts
     load_bundled_fonts()
 
-    # Use custom proxy style for dark scrollbars (CSS scrollbar styling is
+    # Apply theme (must happen before any widgets or stylesheets are built)
+    from GUI.settings import AppSettings
+    from GUI.styles import apply_theme, get_app_stylesheet, DarkScrollbarStyle
+    _settings = AppSettings.load()
+    apply_theme(_settings.theme)
+
+    # Use custom proxy style for scrollbars (CSS scrollbar styling is
     # unreliable on Windows with Fusion — this paints them directly).
-    from GUI.styles import DarkScrollbarStyle
     app.setStyle(DarkScrollbarStyle("Fusion"))
 
-    # Set a dark palette so Fusion's fallback colors aren't bright grey/blue
+    # Set Fusion palette to match the active theme so fallback colors don't leak
     palette = QPalette()
-    palette.setColor(QPalette.ColorRole.Window, QColor(26, 26, 46))
-    palette.setColor(QPalette.ColorRole.WindowText, QColor(255, 255, 255))
-    palette.setColor(QPalette.ColorRole.Base, QColor(22, 22, 36))
-    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(30, 30, 48))
-    palette.setColor(QPalette.ColorRole.Text, QColor(255, 255, 255))
-    palette.setColor(QPalette.ColorRole.Button, QColor(30, 30, 48))
-    palette.setColor(QPalette.ColorRole.ButtonText, QColor(255, 255, 255))
-    palette.setColor(QPalette.ColorRole.Highlight, QColor(64, 156, 255))
+    if _settings.theme == "light":
+        _bg = QColor(242, 242, 247)
+        _text = QColor(0, 0, 0)
+        _base = QColor(255, 255, 255)
+        _alt = QColor(232, 232, 237)
+        _btn = QColor(230, 230, 235)
+        _highlight = QColor(26, 125, 232)
+    else:
+        _bg = QColor(26, 26, 46)
+        _text = QColor(255, 255, 255)
+        _base = QColor(22, 22, 36)
+        _alt = QColor(30, 30, 48)
+        _btn = QColor(30, 30, 48)
+        _highlight = QColor(64, 156, 255)
+
+    palette.setColor(QPalette.ColorRole.Window, _bg)
+    palette.setColor(QPalette.ColorRole.WindowText, _text)
+    palette.setColor(QPalette.ColorRole.Base, _base)
+    palette.setColor(QPalette.ColorRole.AlternateBase, _alt)
+    palette.setColor(QPalette.ColorRole.Text, _text)
+    palette.setColor(QPalette.ColorRole.Button, _btn)
+    palette.setColor(QPalette.ColorRole.ButtonText, _text)
+    palette.setColor(QPalette.ColorRole.Highlight, _highlight)
     palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
-    palette.setColor(QPalette.ColorRole.Mid, QColor(30, 30, 48))
-    palette.setColor(QPalette.ColorRole.Dark, QColor(18, 18, 30))
-    palette.setColor(QPalette.ColorRole.Midlight, QColor(40, 40, 60))
-    palette.setColor(QPalette.ColorRole.Shadow, QColor(0, 0, 0))
-    palette.setColor(QPalette.ColorRole.Light, QColor(50, 50, 70))
     app.setPalette(palette)
 
-    # Apply global stylesheet
-    from GUI.styles import APP_STYLESHEET
-    app.setStyleSheet(APP_STYLESHEET)
+    # Apply global stylesheet (built from the now-patched Colors)
+    app.setStyleSheet(get_app_stylesheet())
 
     window = MainWindow()
 

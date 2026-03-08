@@ -380,7 +380,7 @@ class DevicePickerDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
 
-        self._manual_btn = QPushButton("📁  Browse Manually...")
+        self._manual_btn = QPushButton("⊞  Browse Manually...")
         self._manual_btn.setFont(QFont(FONT_FAMILY, 10))
         self._manual_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._manual_btn.setStyleSheet(btn_css(
@@ -394,7 +394,7 @@ class DevicePickerDialog(QDialog):
         self._manual_btn.clicked.connect(self._browse_manually)
         btn_layout.addWidget(self._manual_btn)
 
-        self._rescan_btn = QPushButton("🔃  Rescan")
+        self._rescan_btn = QPushButton("↺  Rescan")
         self._rescan_btn.setFont(QFont(FONT_FAMILY, 10))
         self._rescan_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._rescan_btn.setStyleSheet(btn_css(

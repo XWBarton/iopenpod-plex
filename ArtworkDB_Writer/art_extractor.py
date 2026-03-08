@@ -264,3 +264,133 @@ def art_hash(art_bytes: bytes) -> str:
     Tracks with identical art will share the same ArtworkDB entry.
     """
     return hashlib.md5(art_bytes).hexdigest()
+
+
+def embed_art(file_path: str, art_bytes: bytes, mime_type: str = "image/jpeg") -> bool:
+    """Embed album art into a media file, replacing any existing cover art.
+
+    Supports MP3, M4A/M4B/AAC, FLAC, OGG Vorbis, OPUS, AIFF.
+
+    Args:
+        file_path: Path to the audio file to modify in-place.
+        art_bytes: Raw image bytes (JPEG or PNG).
+        mime_type: MIME type of the image ("image/jpeg" or "image/png").
+
+    Returns:
+        True on success, False if the format is unsupported or mutagen unavailable.
+    """
+    if not MUTAGEN_AVAILABLE:
+        return False
+
+    path = Path(file_path)
+    ext = path.suffix.lower()
+
+    try:
+        if ext == ".mp3":
+            return _embed_mp3(file_path, art_bytes, mime_type)
+        elif ext in (".m4a", ".m4p", ".m4b", ".aac", ".alac", ".m4v", ".mp4"):
+            return _embed_mp4(file_path, art_bytes, mime_type)
+        elif ext == ".flac":
+            return _embed_flac(file_path, art_bytes, mime_type)
+        elif ext == ".ogg":
+            return _embed_ogg(file_path, art_bytes, mime_type)
+        elif ext == ".opus":
+            return _embed_opus(file_path, art_bytes, mime_type)
+        elif ext in (".aif", ".aiff"):
+            return _embed_aiff(file_path, art_bytes, mime_type)
+        else:
+            logger.debug("embed_art: unsupported format %s", ext)
+            return False
+    except Exception as e:
+        logger.warning("embed_art: failed for %s: %s", file_path, e)
+        return False
+
+
+def _embed_mp3(path: str, art_bytes: bytes, mime_type: str) -> bool:
+    from mutagen.mp3 import MP3
+    from mutagen.id3 import ID3, APIC, ID3NoHeaderError
+
+    try:
+        tags = ID3(path)
+    except ID3NoHeaderError:
+        tags = ID3()
+
+    tags.delall("APIC")
+    tags.add(APIC(
+        encoding=3,       # UTF-8
+        mime=mime_type,
+        type=3,           # Cover (front)
+        desc="Cover",
+        data=art_bytes,
+    ))
+    tags.save(path)
+    return True
+
+
+def _embed_mp4(path: str, art_bytes: bytes, mime_type: str) -> bool:
+    from mutagen.mp4 import MP4, MP4Cover
+
+    fmt = MP4Cover.FORMAT_PNG if "png" in mime_type else MP4Cover.FORMAT_JPEG
+    audio = MP4(path)
+    if audio.tags is None:
+        audio.add_tags()
+    audio.tags["covr"] = [MP4Cover(art_bytes, imageformat=fmt)]
+    audio.save()
+    return True
+
+
+def _embed_flac(path: str, art_bytes: bytes, mime_type: str) -> bool:
+    from mutagen.flac import FLAC, Picture
+
+    audio = FLAC(path)
+    pic = Picture()
+    pic.type = 3          # Cover (front)
+    pic.mime = mime_type
+    pic.data = art_bytes
+    audio.clear_pictures()
+    audio.add_picture(pic)
+    audio.save()
+    return True
+
+
+def _embed_ogg(path: str, art_bytes: bytes, mime_type: str) -> bool:
+    from mutagen.oggvorbis import OggVorbis
+    return _embed_vorbis(OggVorbis(path), path, art_bytes, mime_type)
+
+
+def _embed_opus(path: str, art_bytes: bytes, mime_type: str) -> bool:
+    from mutagen.oggopus import OggOpus
+    return _embed_vorbis(OggOpus(path), path, art_bytes, mime_type)
+
+
+def _embed_vorbis(audio, path: str, art_bytes: bytes, mime_type: str) -> bool:
+    import base64
+    from mutagen.flac import Picture
+
+    pic = Picture()
+    pic.type = 3
+    pic.mime = mime_type
+    pic.data = art_bytes
+    encoded = base64.b64encode(pic.write()).decode("ascii")
+    audio["metadata_block_picture"] = [encoded]
+    audio.save(path)
+    return True
+
+
+def _embed_aiff(path: str, art_bytes: bytes, mime_type: str) -> bool:
+    from mutagen.aiff import AIFF
+    from mutagen.id3 import APIC
+
+    audio = AIFF(path)
+    if audio.tags is None:
+        audio.add_tags()
+    audio.tags.delall("APIC")
+    audio.tags.add(APIC(
+        encoding=3,
+        mime=mime_type,
+        type=3,
+        desc="Cover",
+        data=art_bytes,
+    ))
+    audio.save()
+    return True

@@ -16,6 +16,7 @@ from GUI.widgets.backupBrowser import BackupBrowserWidget
 from GUI.settings import get_settings
 from GUI.notifications import Notifier
 from GUI.styles import Colors, FONT_FAMILY, btn_css
+from GUI.widgets.formatters import format_size
 import threading
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ class _MissingToolsDialog(QDialog):
         layout.setSpacing(10)
 
         # Icon + title row
-        icon_label = QLabel("⚠️")
+        icon_label = QLabel("△")
         icon_label.setFont(QFont(FONT_FAMILY, 22))
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(icon_label)
@@ -768,17 +769,17 @@ class iTunesDBCache(QObject):
 
 
 category_glyphs = {
-    "Albums": "💿",
-    "Artists": "🧑‍🎤",
-    "Tracks": "🎵",
-    "Playlists": "📂",
-    "Genres": "📜",
-    "Podcasts": "🎙️",
-    "Audiobooks": "📖",
-    "Videos": "📹",
-    "Movies": "🎬",
-    "TV Shows": "📺",
-    "Music Videos": "🎤",
+    "Albums": "◉",
+    "Artists": "♪",
+    "Tracks": "♫",
+    "Playlists": "≡",
+    "Genres": "◆",
+    "Podcasts": "◎",
+    "Audiobooks": "▤",
+    "Videos": "▶",
+    "Movies": "◼",
+    "TV Shows": "▣",
+    "Music Videos": "♬",
 }
 
 
@@ -1017,6 +1018,9 @@ class MainWindow(QMainWindow):
         _s = _get_settings()
         self.resize(_s.window_width, _s.window_height)
 
+        # Allow free vertical (and horizontal) resizing
+        self.setMinimumSize(640, 420)
+
         # Central widget with stacked layout for main/sync views
         self.centralStack = QStackedWidget()
         self.setCentralWidget(self.centralStack)
@@ -1076,6 +1080,13 @@ class MainWindow(QMainWindow):
 
         # Connect sync button to PC sync
         self.sidebar.syncButton.clicked.connect(self.startPCSync)
+
+        # Connect Plex button
+        self.sidebar.plexButton.clicked.connect(self.startPlexSync)
+        self._plex_temp_dir: str = ""
+
+        # Connect Manage iPod button
+        self.sidebar.manageButton.clicked.connect(self.showIPodBrowser)
 
         # Connect settings button
         self.sidebar.settingsButton.clicked.connect(self.showSettings)
@@ -1460,6 +1471,130 @@ class MainWindow(QMainWindow):
         self._sync_worker.error.connect(self._onSyncError)
         self._sync_worker.start()
 
+    def startPlexSync(self):
+        """Open the Plex browser, let user pick an album, then sync it to iPod."""
+        device = DeviceManager.get_instance()
+        if not device.device_path:
+            QMessageBox.warning(self, "No Device", "Please select an iPod device first.")
+            return
+
+        from GUI.widgets.plexBrowser import PlexBrowserDialog, PlexSyncWorker
+
+        dlg = PlexBrowserDialog(self)
+        if dlg.exec() != dlg.DialogCode.Accepted:
+            return
+
+        # Show sync loading view
+        self.centralStack.setCurrentIndex(1)
+        self.syncReview.show_loading()
+
+        cache = iTunesDBCache.get_instance()
+        ipod_tracks = cache.get_tracks()
+
+        supports_video = False
+        supports_podcast = True
+        try:
+            from device_info import get_current_device
+            from ipod_models import capabilities_for_family_gen
+            dev = get_current_device()
+            if dev and dev.model_family and dev.generation:
+                caps = capabilities_for_family_gen(dev.model_family, dev.generation)
+                supports_video = bool(caps and caps.supports_video)
+                supports_podcast = bool(caps and caps.supports_podcast)
+        except Exception:
+            pass
+
+        self._plex_sync_worker = PlexSyncWorker(
+            base_url=dlg.selected_url,
+            token=dlg.selected_token,
+            album_rating_key=dlg.selected_album_keys,
+            ipod_tracks=ipod_tracks,
+            ipod_path=device.device_path or "",
+            supports_video=supports_video,
+            supports_podcast=supports_podcast,
+        )
+        self._plex_sync_worker.progress.connect(self.syncReview.update_progress)
+        self._plex_sync_worker.finished.connect(self._onPlexDiffComplete)
+        self._plex_sync_worker.error.connect(self._onSyncError)
+        self._plex_sync_worker.start()
+
+    def _onPlexDiffComplete(self, plan, temp_dir: str):
+        """Called when Plex download + diff is done. Show plan; remember temp dir."""
+        self._plex_temp_dir = temp_dir
+        self._plan = plan
+        cache = iTunesDBCache.get_instance()
+        self.syncReview._ipod_tracks_cache = cache.get_tracks() or []
+        self._populate_playlist_changes(plan, cache)
+        self.syncReview.show_plan(plan)
+
+    def showIPodBrowser(self):
+        """Open the iPod browser dialog to manage (remove) tracks from the device."""
+        device = DeviceManager.get_instance()
+        if not device.device_path:
+            QMessageBox.warning(self, "No Device", "Please select an iPod device first.")
+            return
+
+        cache = iTunesDBCache.get_instance()
+        if not cache.is_ready():
+            QMessageBox.information(self, "Not Ready", "iPod library is still loading. Try again in a moment.")
+            return
+
+        from GUI.widgets.ipodBrowser import iPodBrowserDialog
+        dlg = iPodBrowserDialog(cache, parent=self)
+        dlg.remove_requested.connect(self._onIPodRemoveRequested)
+        dlg.exec()
+
+    def _onIPodRemoveRequested(self, items: list):
+        """Execute a removal-only sync plan built from the iPod browser selection."""
+        from SyncEngine.fingerprint_diff_engine import SyncPlan
+
+        if not items:
+            return
+
+        device = DeviceManager.get_instance()
+        if not device.device_path:
+            QMessageBox.warning(self, "No Device", "No iPod device selected.")
+            return
+
+        n = len(items)
+        total_size = sum((i.ipod_track or {}).get("fileSize", 0) for i in items)
+        size_str = f"\n\n~{format_size(total_size)} will be freed." if total_size else ""
+        reply = QMessageBox.question(
+            self,
+            "Confirm Removal",
+            f"Remove {n} track{'s' if n != 1 else ''} from the iPod?{size_str}\n\nThis cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        plan = SyncPlan(to_remove=items)
+
+        # Switch to sync review and show executing progress
+        self.centralStack.setCurrentIndex(1)
+        self.syncReview.show_executing()
+
+        self._sync_execute_worker = SyncExecuteWorker(
+            ipod_path=device.device_path,
+            plan=plan,
+            skip_backup=False,
+        )
+        self._sync_execute_worker.progress.connect(self.syncReview.update_execute_progress)
+        self._sync_execute_worker.finished.connect(self._onSyncExecuteComplete)
+        self._sync_execute_worker.error.connect(self._onSyncExecuteError)
+        self._sync_execute_worker.start()
+
+    def _cleanupPlexTempDir(self):
+        """Delete the Plex download temp dir if present."""
+        if self._plex_temp_dir and os.path.isdir(self._plex_temp_dir):
+            try:
+                import shutil
+                shutil.rmtree(self._plex_temp_dir, ignore_errors=True)
+                logger.info("Deleted Plex temp dir: %s", self._plex_temp_dir)
+            except Exception as e:
+                logger.warning("Could not delete Plex temp dir: %s", e)
+        self._plex_temp_dir = ""
+
     def _download_missing_tools_then_sync(self, need_ffmpeg: bool, need_fpcalc: bool):
         """Download missing tools in a background thread, then restart sync."""
         progress = _DownloadProgressDialog(self)
@@ -1657,11 +1792,17 @@ class MainWindow(QMainWindow):
                 errors=len(getattr(result, 'errors', [])),
             )
 
+        # Clean up Plex temp download dir if this was a Plex sync
+        self._cleanupPlexTempDir()
+
         # Reload the database to show changes (delay lets OS flush writes)
         QTimer.singleShot(500, self._rescanAfterSync)
 
     def _rescanAfterSync(self):
         """Rescan the iPod database after a short post-write delay."""
+        from .imgMaker import clear_artworkdb_cache
+        clear_artworkdb_cache()
+
         cache = iTunesDBCache.get_instance()
         cache.invalidate()
         cache.start_loading()
@@ -1676,6 +1817,7 @@ class MainWindow(QMainWindow):
     def _onSyncExecuteError(self, error_msg: str):
         """Called when sync execution fails."""
         self._disconnect_skip_signal()
+        self._cleanupPlexTempDir()
         # Desktop notification if app is not focused
         if not self.isActiveWindow():
             self._notifier.notify_sync_error(error_msg)

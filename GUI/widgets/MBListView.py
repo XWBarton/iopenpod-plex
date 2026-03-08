@@ -1447,7 +1447,7 @@ class MusicBrowserList(QFrame):
                 if regular:
                     for pl in regular:
                         title = pl.get("Title", "Untitled")
-                        act = add_menu.addAction(f"📋  {title}")
+                        act = add_menu.addAction(f"≡  {title}")
                         if act:
                             act.triggered.connect(
                                 lambda _=False, p=pl: self._add_selected_to_playlist(p)

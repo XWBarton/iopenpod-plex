@@ -24,7 +24,7 @@ Usage:
 """
 
 from .artwork_writer import write_artworkdb, ArtworkEntry
-from .art_extractor import extract_art, art_hash
+from .art_extractor import extract_art, art_hash, embed_art
 from .rgb565 import (
     convert_art_for_ipod,
     image_from_bytes,
@@ -46,6 +46,7 @@ __all__ = [
     'ArtworkEntry',
     'extract_art',
     'art_hash',
+    'embed_art',
     'convert_art_for_ipod',
     'image_from_bytes',
     'rgb888_to_rgb565',

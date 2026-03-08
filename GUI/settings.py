@@ -122,6 +122,9 @@ class AppSettings:
     last_device_path: str = ""
 
     # ── Appearance ──────────────────────────────────────────────────────────
+    # UI theme: "dark" or "light". Takes effect on next launch.
+    theme: str = "dark"
+
     # Show album art in the track list view
     show_art_in_tracklist: bool = True
 
@@ -132,6 +135,13 @@ class AppSettings:
     # Remembered splitter sizes for grid/track split (not exposed in UI).
     # Empty list = use default 60/40 split.
     splitter_sizes: list = field(default_factory=list)
+
+    # ── Plex ────────────────────────────────────────────────────────────────
+    # Plex server base URL (e.g. http://192.168.1.100:32400). Empty = not configured.
+    plex_url: str = ""
+
+    # Plex auth token (obtained via PIN login flow). Empty = not logged in.
+    plex_token: str = ""
 
     # ── Scrobbling ──────────────────────────────────────────────────────────
     # Submit iPod play counts to ListenBrainz after each sync.

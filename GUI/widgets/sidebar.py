@@ -1,7 +1,7 @@
 from PyQt6.QtCore import pyqtSignal, Qt, QRegularExpression
 from PyQt6.QtWidgets import (
     QFrame, QPushButton, QVBoxLayout, QHBoxLayout,
-    QLabel, QWidget, QProgressBar, QLineEdit
+    QLabel, QWidget, QProgressBar, QLineEdit, QScrollArea, QSizePolicy
 )
 from PyQt6.QtGui import QFont, QCursor, QRegularExpressionValidator
 from .formatters import format_size, format_duration_human as format_duration
@@ -112,7 +112,7 @@ class DeviceInfoCard(QFrame):
         header_layout = QHBoxLayout()
         header_layout.setSpacing(8)
 
-        self.icon_label = QLabel("🎵")
+        self.icon_label = QLabel("♪")
         self.icon_label.setFont(QFont(FONT_FAMILY, 24))
         self.icon_label.setFixedSize(52, 52)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -341,17 +341,17 @@ class DeviceInfoCard(QFrame):
             # Fallback to emoji
             model_lower = model.lower() if model else ""
             if "classic" in model_lower:
-                self.icon_label.setText("📱")
+                self.icon_label.setText("◉")
             elif "nano" in model_lower:
-                self.icon_label.setText("🎵")
+                self.icon_label.setText("◍")
             elif "shuffle" in model_lower:
-                self.icon_label.setText("🔀")
+                self.icon_label.setText("≈")
             elif "mini" in model_lower:
-                self.icon_label.setText("🎶")
+                self.icon_label.setText("◌")
             elif "video" in model_lower or "photo" in model_lower:
-                self.icon_label.setText("📱")
+                self.icon_label.setText("▶")
             else:
-                self.icon_label.setText("🎵")
+                self.icon_label.setText("♪")
             self.icon_label.setFont(QFont(FONT_FAMILY, 24))
 
         # Update technical details from centralized store
@@ -493,8 +493,8 @@ class Sidebar(QFrame):
         self.deviceSelectLayout.setContentsMargins(0, 0, 0, 0)
         self.deviceSelectLayout.setSpacing(6)
 
-        self.deviceButton = QPushButton("📂 Select")
-        self.rescanButton = QPushButton("🔃 Rescan")
+        self.deviceButton = QPushButton("⊞ Select")
+        self.rescanButton = QPushButton("↺ Rescan")
 
         button_style = btn_css(
             bg=Colors.SURFACE_RAISED,
@@ -513,13 +513,40 @@ class Sidebar(QFrame):
         self.sidebarLayout.addLayout(self.deviceSelectLayout)
 
         # Sync button - row 2 (full width)
-        self.syncButton = QPushButton("🔄 Sync with PC")
+        self.syncButton = QPushButton("⇄  Sync with PC")
         self.syncButton.setStyleSheet(accent_btn_css())
         self.syncButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
         self.sidebarLayout.addWidget(self.syncButton)
 
+        # Plex + Manage row
+        plex_manage_row = QHBoxLayout()
+        plex_manage_row.setContentsMargins(0, 0, 0, 0)
+        plex_manage_row.setSpacing(6)
+
+        self.plexButton = QPushButton("⊕  Plex")
+        self.plexButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
+        self.plexButton.setStyleSheet(btn_css(
+            bg=Colors.SURFACE_RAISED,
+            bg_hover=Colors.SURFACE_ACTIVE,
+            bg_press=Colors.SURFACE,
+            padding="8px 0",
+        ))
+        plex_manage_row.addWidget(self.plexButton)
+
+        self.manageButton = QPushButton("▤  Manage")
+        self.manageButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
+        self.manageButton.setStyleSheet(btn_css(
+            bg=Colors.SURFACE_RAISED,
+            bg_hover=Colors.SURFACE_ACTIVE,
+            bg_press=Colors.SURFACE,
+            padding="8px 0",
+        ))
+        plex_manage_row.addWidget(self.manageButton)
+
+        self.sidebarLayout.addLayout(plex_manage_row)
+
         # Backup button
-        self.backupButton = QPushButton("💾 Backups")
+        self.backupButton = QPushButton("⊟  Backups")
         self.backupButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
         self.backupButton.setStyleSheet(btn_css(
             bg=Colors.SURFACE_ALT,
@@ -536,16 +563,35 @@ class Sidebar(QFrame):
         sep.setStyleSheet(f"background-color: {Colors.BORDER_SUBTLE};")
         self.sidebarLayout.addWidget(sep)
 
-        # Category label
+        # Scrollable category list — allows the window to shrink vertically
+        # without the sidebar buttons forcing a tall minimum height.
+        cat_scroll = QScrollArea()
+        cat_scroll.setWidgetResizable(True)
+        cat_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        cat_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        cat_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        cat_scroll.setStyleSheet("""
+            QScrollArea { background: transparent; border: none; }
+            QScrollBar:vertical { width: 4px; background: transparent; }
+            QScrollBar::handle:vertical { background: rgba(128,128,128,60); border-radius: 2px; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+        """)
+
+        cat_container = QWidget()
+        cat_container.setStyleSheet("background: transparent;")
+        cat_layout = QVBoxLayout(cat_container)
+        cat_layout.setContentsMargins(0, 0, 0, 0)
+        cat_layout.setSpacing(2)
+
         lib_label = QLabel("LIBRARY")
         lib_label.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.Bold))
         lib_label.setStyleSheet(f"color: {Colors.TEXT_TERTIARY}; background: transparent; padding-left: 4px;")
-        self.sidebarLayout.addWidget(lib_label)
+        cat_layout.addWidget(lib_label)
 
         self.buttons = {}
 
         for category, glyph in category_glyphs.items():
-            btn = QPushButton(f"{glyph} {category}")
+            btn = QPushButton(f"{glyph}  {category}")
             btn.setFont(QFont(FONT_FAMILY, 11, QFont.Weight.DemiBold))
 
             btn.setStyleSheet(btn_css(
@@ -560,13 +606,15 @@ class Sidebar(QFrame):
             btn.clicked.connect(
                 lambda clicked, category=category: self.selectCategory(category))
 
-            self.sidebarLayout.addWidget(btn)
+            cat_layout.addWidget(btn)
             self.buttons[category] = btn
 
-        self.sidebarLayout.addStretch()
+        cat_layout.addStretch()
+        cat_scroll.setWidget(cat_container)
+        self.sidebarLayout.addWidget(cat_scroll, stretch=1)
 
         # Settings button at bottom
-        self.settingsButton = QPushButton("⚙ Settings")
+        self.settingsButton = QPushButton("⚙  Settings")
         self.settingsButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
         self.settingsButton.setStyleSheet(btn_css(
             bg="transparent",
@@ -644,7 +692,7 @@ class Sidebar(QFrame):
 
     def updateDeviceButton(self, device_name: str):
         """Update the device button text to show selected device."""
-        self.deviceButton.setText("📂 Device")
+        self.deviceButton.setText("⊞ Device")
 
     def selectCategory(self, category):
         # Reset the previous selected button's style

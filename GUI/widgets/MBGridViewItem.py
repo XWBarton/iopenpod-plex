@@ -80,7 +80,7 @@ class MusicBrowserGridItem(QFrame):
 
     def _setPlaceholderImage(self):
         """Set a placeholder when no artwork is available."""
-        self.img_label.setText("🎵")
+        self.img_label.setText("♪")
         self.img_label.setFont(QFont(FONT_FAMILY, 40))
         self.img_label.setStyleSheet(f"""
             border: none;

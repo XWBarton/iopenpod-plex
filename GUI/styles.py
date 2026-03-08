@@ -3,6 +3,13 @@ Centralized style definitions for iOpenPod.
 
 All colors, dimensions, and reusable stylesheet fragments live here so that
 every widget draws from a single visual language.
+
+Theming
+-------
+Call ``apply_theme("dark")`` or ``apply_theme("light")`` *before* creating
+any widgets (typically in main.py right after loading settings).  This patches
+the ``Colors`` class attributes in-place so that every subsequent stylesheet
+string picks up the correct values.
 """
 
 import sys
@@ -34,20 +41,113 @@ else:
         ' "Ubuntu", "DejaVu Sans"'
     )
 
-# ── Color palette ────────────────────────────────────────────────────────────
+# ── Theme palettes ────────────────────────────────────────────────────────────
+
+_DARK_PALETTE: dict[str, str] = {
+    # Accent
+    "ACCENT": "#409cff",
+    "ACCENT_LIGHT": "#60b0ff",
+    "ACCENT_DIM": "rgba(64,156,255,80)",
+    "ACCENT_HOVER": "rgba(64,156,255,120)",
+    "ACCENT_PRESS": "rgba(64,156,255,60)",
+    "ACCENT_BORDER": "rgba(64,156,255,100)",
+    # Surfaces
+    "BG_DARK": "#1a1a2e",
+    "BG_MID": "#1e1e32",
+    "SURFACE": "rgba(255,255,255,8)",
+    "SURFACE_ALT": "rgba(255,255,255,12)",
+    "SURFACE_RAISED": "rgba(255,255,255,18)",
+    "SURFACE_HOVER": "rgba(255,255,255,25)",
+    "SURFACE_ACTIVE": "rgba(255,255,255,35)",
+    "MENU_BG": "#2a2a40",
+    # Text
+    "TEXT_PRIMARY": "rgba(255,255,255,230)",
+    "TEXT_SECONDARY": "rgba(255,255,255,150)",
+    "TEXT_TERTIARY": "rgba(255,255,255,100)",
+    "TEXT_DISABLED": "rgba(255,255,255,60)",
+    # Borders
+    "BORDER": "rgba(255,255,255,30)",
+    "BORDER_SUBTLE": "rgba(255,255,255,15)",
+    "BORDER_FOCUS": "rgba(64,156,255,150)",
+    # Misc
+    "GRIDLINE": "rgba(255,255,255,12)",
+    "SELECTION": "rgba(64,156,255,90)",
+    "STAR": "#ffc857",
+    "DANGER": "#ff6b6b",
+    "SUCCESS": "#51cf66",
+    "WARNING": "#fcc419",
+    # Scrollbar (used by AppScrollbarStyle)
+    "SCROLLBAR_THUMB": "rgba(255,255,255,70)",
+    "SCROLLBAR_THUMB_HOVER": "rgba(255,255,255,110)",
+    "SCROLLBAR_THUMB_PRESS": "rgba(255,255,255,140)",
+    # Dialog / message box backgrounds (opaque, used in QSS strings)
+    "DIALOG_BG": "#222233",
+    "MSGBOX_BG": "#222233",
+    "MSGBOX_FG": "white",
+    "TOOLTIP_BG": "#2a2d3a",
+}
+
+_LIGHT_PALETTE: dict[str, str] = {
+    # Accent — same blue, slightly stronger for legibility on white
+    "ACCENT": "#1a7de8",
+    "ACCENT_LIGHT": "#409cff",
+    "ACCENT_DIM": "rgba(26,125,232,100)",
+    "ACCENT_HOVER": "rgba(26,125,232,150)",
+    "ACCENT_PRESS": "rgba(26,125,232,70)",
+    "ACCENT_BORDER": "rgba(26,125,232,180)",
+    # Surfaces — light gray / white tones
+    "BG_DARK": "#f2f2f7",
+    "BG_MID": "#e8e8ed",
+    "SURFACE": "rgba(0,0,0,5)",
+    "SURFACE_ALT": "rgba(0,0,0,8)",
+    "SURFACE_RAISED": "rgba(0,0,0,13)",
+    "SURFACE_HOVER": "rgba(0,0,0,20)",
+    "SURFACE_ACTIVE": "rgba(0,0,0,30)",
+    "MENU_BG": "#f5f5fa",
+    # Text
+    "TEXT_PRIMARY": "rgba(0,0,0,222)",
+    "TEXT_SECONDARY": "rgba(0,0,0,140)",
+    "TEXT_TERTIARY": "rgba(0,0,0,90)",
+    "TEXT_DISABLED": "rgba(0,0,0,50)",
+    # Borders
+    "BORDER": "rgba(0,0,0,18)",
+    "BORDER_SUBTLE": "rgba(0,0,0,10)",
+    "BORDER_FOCUS": "rgba(26,125,232,200)",
+    # Misc
+    "GRIDLINE": "rgba(0,0,0,8)",
+    "SELECTION": "rgba(26,125,232,80)",
+    "STAR": "#e6a800",
+    "DANGER": "#d93025",
+    "SUCCESS": "#1e8e3e",
+    "WARNING": "#e37400",
+    # Scrollbar
+    "SCROLLBAR_THUMB": "rgba(0,0,0,40)",
+    "SCROLLBAR_THUMB_HOVER": "rgba(0,0,0,65)",
+    "SCROLLBAR_THUMB_PRESS": "rgba(0,0,0,85)",
+    # Dialog / message box backgrounds
+    "DIALOG_BG": "#f8f8fc",
+    "MSGBOX_BG": "#f2f2f7",
+    "MSGBOX_FG": "rgba(0,0,0,222)",
+    "TOOLTIP_BG": "#ffffff",
+}
+
+# ── Color palette (patched by apply_theme) ───────────────────────────────────
 
 
 class Colors:
-    """Named colors used throughout the app."""
-    # Primary accent
+    """Named colors used throughout the app.
+
+    Do not read these at module import time — always reference them inside
+    functions/methods so that ``apply_theme()`` has a chance to patch them
+    first.
+    """
+    # Defaults match the dark palette (safe fallback if apply_theme not called)
     ACCENT = "#409cff"
     ACCENT_LIGHT = "#60b0ff"
     ACCENT_DIM = "rgba(64,156,255,80)"
     ACCENT_HOVER = "rgba(64,156,255,120)"
     ACCENT_PRESS = "rgba(64,156,255,60)"
     ACCENT_BORDER = "rgba(64,156,255,100)"
-
-    # Surfaces
     BG_DARK = "#1a1a2e"
     BG_MID = "#1e1e32"
     SURFACE = "rgba(255,255,255,8)"
@@ -55,26 +155,49 @@ class Colors:
     SURFACE_RAISED = "rgba(255,255,255,18)"
     SURFACE_HOVER = "rgba(255,255,255,25)"
     SURFACE_ACTIVE = "rgba(255,255,255,35)"
-    MENU_BG = "#2a2a40"  # Opaque — QMenu on macOS renders rgba transparency
-
-    # Text
+    MENU_BG = "#2a2a40"
     TEXT_PRIMARY = "rgba(255,255,255,230)"
     TEXT_SECONDARY = "rgba(255,255,255,150)"
     TEXT_TERTIARY = "rgba(255,255,255,100)"
     TEXT_DISABLED = "rgba(255,255,255,60)"
-
-    # Borders
     BORDER = "rgba(255,255,255,30)"
     BORDER_SUBTLE = "rgba(255,255,255,15)"
     BORDER_FOCUS = "rgba(64,156,255,150)"
-
-    # Misc
     GRIDLINE = "rgba(255,255,255,12)"
     SELECTION = "rgba(64,156,255,90)"
     STAR = "#ffc857"
     DANGER = "#ff6b6b"
     SUCCESS = "#51cf66"
     WARNING = "#fcc419"
+    SCROLLBAR_THUMB = "rgba(255,255,255,70)"
+    SCROLLBAR_THUMB_HOVER = "rgba(255,255,255,110)"
+    SCROLLBAR_THUMB_PRESS = "rgba(255,255,255,140)"
+    DIALOG_BG = "#222233"
+    MSGBOX_BG = "#222233"
+    MSGBOX_FG = "white"
+    TOOLTIP_BG = "#2a2d3a"
+
+
+# Track the active theme name for reference elsewhere
+_active_theme: str = "dark"
+
+
+def apply_theme(name: str) -> None:
+    """Patch Colors class attributes for the given theme ('dark' or 'light').
+
+    Must be called before any widgets are constructed so that all stylesheet
+    strings pick up the correct values.
+    """
+    global _active_theme
+    palette = _LIGHT_PALETTE if name == "light" else _DARK_PALETTE
+    for attr, value in palette.items():
+        setattr(Colors, attr, value)
+    _active_theme = name
+
+
+def current_theme() -> str:
+    """Return the name of the currently active theme."""
+    return _active_theme
 
 
 class Metrics:
@@ -100,19 +223,32 @@ class Metrics:
 # ── Custom proxy style for scrollbar painting ───────────────────────────────
 
 class DarkScrollbarStyle(QProxyStyle):
-    """Overrides Fusion scrollbar painting with thin, dark, rounded bars.
+    """Overrides Fusion scrollbar painting with thin, rounded bars.
 
     Qt stylesheet-based scrollbar styling is unreliable on Windows with
     Fusion (CSS is silently ignored). This proxy style paints scrollbars
     directly via QPainter so they always render correctly.
+
+    Thumb colors are read from Colors at draw time so they follow the
+    active theme automatically.
     """
 
     _THICKNESS = 8                         # thin like macOS/VS Code
     _MIN_HANDLE = 36                       # minimum thumb length
     _TRACK = QColor(0, 0, 0, 0)           # invisible track
+
+    # Kept for backwards compat — actual colors read from Colors at draw time
     _THUMB = QColor(255, 255, 255, 70)
     _THUMB_HOVER = QColor(255, 255, 255, 110)
     _THUMB_PRESS = QColor(255, 255, 255, 140)
+
+    @staticmethod
+    def _thumb_color(pressed: bool, hovered: bool) -> QColor:
+        if pressed:
+            return QColor(Colors.SCROLLBAR_THUMB_PRESS)
+        if hovered:
+            return QColor(Colors.SCROLLBAR_THUMB_HOVER)
+        return QColor(Colors.SCROLLBAR_THUMB)
 
     def __init__(self, base_key: str = "Fusion"):
         super().__init__(base_key)
@@ -232,12 +368,7 @@ class DarkScrollbarStyle(QProxyStyle):
                 and (active_sc & QStyle.SubControl.SC_ScrollBarSlider)  # noqa: W503
             )
 
-            if pressed:
-                color = self._THUMB_PRESS
-            elif hovered:
-                color = self._THUMB_HOVER
-            else:
-                color = self._THUMB
+            color = self._thumb_color(pressed, hovered)
 
             horiz = option.orientation == Qt.Orientation.Horizontal
             # Inset to create a floating pill centered in the track
@@ -282,9 +413,14 @@ def scrollbar_css(width: int = Metrics.SCROLLBAR_W, orient: str = "vertical") ->
     Covers every pseudo-element so that native platform chrome never leaks
     through (especially on Windows where the default blue bar is visible
     if any sub-element is left unstyled).
+
+    Colors are read from Colors at call time so they follow the active theme.
     """
     bar = f"QScrollBar:{orient}"
     r = max(width // 2, 1)
+    thumb = Colors.SCROLLBAR_THUMB
+    thumb_h = Colors.SCROLLBAR_THUMB_HOVER
+    thumb_p = Colors.SCROLLBAR_THUMB_PRESS
     if orient == "vertical":
         return f"""
             {bar} {{
@@ -295,15 +431,15 @@ def scrollbar_css(width: int = Metrics.SCROLLBAR_W, orient: str = "vertical") ->
                 border: none;
             }}
             {bar}::handle {{
-                background: rgba(255,255,255,30);
+                background: {thumb};
                 border-radius: {r}px;
                 min-height: {Metrics.SCROLLBAR_MIN_H}px;
             }}
             {bar}::handle:hover {{
-                background: rgba(255,255,255,50);
+                background: {thumb_h};
             }}
             {bar}::handle:pressed {{
-                background: rgba(255,255,255,65);
+                background: {thumb_p};
             }}
             {bar}::add-line, {bar}::sub-line {{
                 border: none; background: none; height: 0px; width: 0px;
@@ -325,15 +461,15 @@ def scrollbar_css(width: int = Metrics.SCROLLBAR_W, orient: str = "vertical") ->
                 border: none;
             }}
             {bar}::handle {{
-                background: rgba(255,255,255,30);
+                background: {thumb};
                 border-radius: {r}px;
                 min-width: {Metrics.SCROLLBAR_MIN_H}px;
             }}
             {bar}::handle:hover {{
-                background: rgba(255,255,255,50);
+                background: {thumb_h};
             }}
             {bar}::handle:pressed {{
-                background: rgba(255,255,255,65);
+                background: {thumb_p};
             }}
             {bar}::add-line, {bar}::sub-line {{
                 border: none; background: none; height: 0px; width: 0px;
@@ -358,47 +494,61 @@ def scrollbar_corner_css() -> str:
 
 
 def btn_css(
-    bg: str = Colors.SURFACE_RAISED,
-    bg_hover: str = Colors.SURFACE_HOVER,
-    bg_press: str = Colors.SURFACE_ALT,
-    fg: str = "white",
+    bg: str = None,
+    bg_hover: str = None,
+    bg_press: str = None,
+    fg: str = None,
     border: str = "none",
     radius: int = Metrics.BORDER_RADIUS_SM,
     padding: str = f"{Metrics.BTN_PADDING_V}px {Metrics.BTN_PADDING_H}px",
     extra: str = "",
 ) -> str:
-    """Standard button stylesheet."""
+    """Standard button stylesheet.
+
+    All color defaults are resolved at call time from the current Colors palette
+    so they follow whichever theme is active.
+    """
+    _bg = bg if bg is not None else Colors.SURFACE_RAISED
+    _bg_hover = bg_hover if bg_hover is not None else Colors.SURFACE_HOVER
+    _bg_press = bg_press if bg_press is not None else Colors.SURFACE_ALT
+    _fg = fg if fg is not None else Colors.TEXT_PRIMARY
     return f"""
         QPushButton {{
-            background: {bg};
+            background: {_bg};
             border: {border};
             border-radius: {radius}px;
-            color: {fg};
+            color: {_fg};
             padding: {padding};
             {extra}
         }}
         QPushButton:hover {{
-            background: {bg_hover};
+            background: {_bg_hover};
         }}
         QPushButton:pressed {{
-            background: {bg_press};
+            background: {_bg_press};
         }}
     """
 
 
 def accent_btn_css() -> str:
-    """Primary action button (blue accent)."""
+    """Primary action button (blue accent) — always white text."""
     return btn_css(
         bg=Colors.ACCENT_DIM,
         bg_hover=Colors.ACCENT_HOVER,
         bg_press=Colors.ACCENT_PRESS,
+        fg="white",
         border=f"1px solid {Colors.ACCENT_BORDER}",
     )
 
 
 # ── Application-level stylesheet ────────────────────────────────────────────
 
-APP_STYLESHEET = f"""
+def get_app_stylesheet() -> str:
+    """Build the application-wide stylesheet using the current Colors palette.
+
+    Call this *after* ``apply_theme()`` so the correct colors are used.
+    """
+    return f"""
     /* ── Base ──────────────────────────────────────────────────── */
     QMainWindow {{
         background: qlineargradient(x1:0, y1:0, x2:0.4, y2:1,
@@ -417,7 +567,7 @@ APP_STYLESHEET = f"""
 
     /* ── Tooltips ──────────────────────────────────────────────── */
     QToolTip {{
-        background: #2a2d3a;
+        background: {Colors.TOOLTIP_BG};
         color: {Colors.TEXT_PRIMARY};
         border: 1px solid {Colors.BORDER};
         border-radius: 4px;
@@ -438,17 +588,17 @@ APP_STYLESHEET = f"""
 
     /* ── Message boxes ─────────────────────────────────────────── */
     QMessageBox {{
-        background: #222233;
-        color: white;
+        background: {Colors.MSGBOX_BG};
+        color: {Colors.MSGBOX_FG};
     }}
     QMessageBox QLabel {{
-        color: white;
+        color: {Colors.MSGBOX_FG};
     }}
     QMessageBox QPushButton {{
         background: {Colors.SURFACE_RAISED};
         border: 1px solid {Colors.BORDER};
         border-radius: {Metrics.BORDER_RADIUS_SM}px;
-        color: white;
+        color: {Colors.TEXT_PRIMARY};
         padding: 6px 20px;
         min-width: 70px;
     }}
@@ -458,7 +608,27 @@ APP_STYLESHEET = f"""
 
     /* ── Dialog ─────────────────────────────────────────────────── */
     QDialog {{
-        background: #222233;
-        color: white;
+        background: {Colors.DIALOG_BG};
+        color: {Colors.TEXT_PRIMARY};
     }}
 """
+
+
+# Backwards-compatible alias — evaluated lazily so it always reflects the
+# current theme as long as apply_theme() was called before first access.
+# (main.py now uses get_app_stylesheet() directly; this shim keeps any other
+# import sites working without changes.)
+class _LazyStylesheet(str):
+    """A str subclass that returns the current stylesheet on str() / use."""
+
+    def __new__(cls):
+        return str.__new__(cls, "")
+
+    def __str__(self):
+        return get_app_stylesheet()
+
+    def __format__(self, spec):
+        return format(get_app_stylesheet(), spec)
+
+
+APP_STYLESHEET = _LazyStylesheet()

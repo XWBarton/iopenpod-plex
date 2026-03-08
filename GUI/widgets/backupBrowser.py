@@ -259,7 +259,7 @@ class SnapshotCard(QFrame):
             delta_text = " · ".join(delta_parts) + " vs previous"
             delta_color = Colors.TEXT_TERTIARY
         elif is_initial:
-            delta_text = "✨ Initial backup"
+            delta_text = "✦  Initial backup"
             delta_color = Colors.ACCENT
         else:
             delta_text = "No changes vs previous"
@@ -287,7 +287,7 @@ class SnapshotCard(QFrame):
             restore_btn.setToolTip("Connect this device to restore")
         btn_layout.addWidget(restore_btn)
 
-        delete_btn = QPushButton("🗑 Delete")
+        delete_btn = QPushButton("⊖  Delete")
         delete_btn.setFont(QFont(FONT_FAMILY, 9))
         delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         delete_btn.setFixedWidth(80)
@@ -350,7 +350,7 @@ class BackupBrowserWidget(QWidget):
         self._back_btn = back_btn
         tb_layout.addWidget(back_btn)
 
-        title = QLabel("💾 Device Backups")
+        title = QLabel("⊟  Device Backups")
         title.setFont(QFont(FONT_FAMILY, 18, QFont.Weight.Bold))
         title.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; background: transparent;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -375,7 +375,7 @@ class BackupBrowserWidget(QWidget):
         self._all_devices_btn.setVisible(False)
         tb_layout.addWidget(self._all_devices_btn)
 
-        self._open_folder_btn = QPushButton("📁")
+        self._open_folder_btn = QPushButton("⊞")
         self._open_folder_btn.setFont(QFont(FONT_FAMILY, 13))
         self._open_folder_btn.setToolTip("Open backup folder")
         self._open_folder_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -391,7 +391,7 @@ class BackupBrowserWidget(QWidget):
         self._open_folder_btn.clicked.connect(self._on_open_folder)
         tb_layout.addWidget(self._open_folder_btn)
 
-        self.backup_now_btn = QPushButton("🔄 Backup Now")
+        self.backup_now_btn = QPushButton("↺  Backup Now")
         self.backup_now_btn.setFont(QFont(FONT_FAMILY, 11, QFont.Weight.DemiBold))
         self.backup_now_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.backup_now_btn.setStyleSheet(accent_btn_css())
@@ -515,7 +515,7 @@ class BackupBrowserWidget(QWidget):
         empty_layout.setContentsMargins(48, 48, 48, 48)
         empty_layout.addStretch()
 
-        empty_icon = QLabel("💾")
+        empty_icon = QLabel("⊟")
         empty_icon.setFont(QFont(FONT_FAMILY, 48))
         empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_icon.setStyleSheet("background: transparent;")
@@ -675,7 +675,7 @@ class BackupBrowserWidget(QWidget):
             return
 
         # Update title
-        self._title_label.setText(f"💾 {self._viewing_device_name}")
+        self._title_label.setText(f"⊟  {self._viewing_device_name}")
 
         # Show list page
         self._stack.setCurrentIndex(0)
@@ -729,7 +729,7 @@ class BackupBrowserWidget(QWidget):
             )
             return
 
-        self._title_label.setText("💾 Device Backups")
+        self._title_label.setText("⊟  Device Backups")
         self._all_devices_btn.setVisible(False)  # Already on the picker page
 
         # Subtitle
@@ -756,7 +756,7 @@ class BackupBrowserWidget(QWidget):
 
     def _show_empty(self, text: str = ""):
         """Show the empty state page with optional custom text."""
-        self._title_label.setText("💾 Device Backups")
+        self._title_label.setText("⊟  Device Backups")
         if text:
             self._empty_text.setText(text)
         self._stack.setCurrentIndex(2)
@@ -785,13 +785,13 @@ class BackupBrowserWidget(QWidget):
     # ── Stage display labels ────────────────────────────────────────────
 
     _STAGE_LABELS = {
-        "scanning": "📂 Scanning Device",
-        "hashing": "🔐 Processing Files",
-        "verifying": "🔍 Verifying Integrity",
-        "cleaning": "🧹 Removing Changed Files",
-        "restoring": "📥 Copying Files to iPod",
-        "no_changes": "✅ Already Up to Date",
-        "complete": "✅ Complete",
+        "scanning": "⊞  Scanning Device",
+        "hashing": "⊗  Processing Files",
+        "verifying": "◎  Verifying Integrity",
+        "cleaning": "⊖  Removing Changed Files",
+        "restoring": "⊕  Copying Files to iPod",
+        "no_changes": "✓  Already Up to Date",
+        "complete": "✓  Complete",
     }
 
     # ── Backup Now ──────────────────────────────────────────────────────
@@ -827,7 +827,7 @@ class BackupBrowserWidget(QWidget):
         device_name = get_device_display_name(device.discovered_ipod)
 
         # Show progress page
-        self._progress_title.setText("📂 Scanning Device")
+        self._progress_title.setText("⊞  Scanning Device")
         self._progress_bar.setRange(0, 0)  # Indeterminate until we know total
         self._progress_file.setText("Discovering files on iPod…")
         self._progress_stats.setText("")
@@ -890,7 +890,7 @@ class BackupBrowserWidget(QWidget):
         if result:
             # Show brief success screen before returning to list
             elapsed = self._format_elapsed(time.monotonic() - self._eta_start_time)
-            self._progress_title.setText("✅ Backup Complete")
+            self._progress_title.setText("✓  Backup Complete")
             self._progress_bar.setRange(0, 1)
             self._progress_bar.setValue(1)
             self._progress_stats.setText(
@@ -902,7 +902,7 @@ class BackupBrowserWidget(QWidget):
         elif no_changes:
             # No changes since last backup — show brief info then return
             elapsed = self._format_elapsed(time.monotonic() - self._eta_start_time)
-            self._progress_title.setText("✅ Already Up to Date")
+            self._progress_title.setText("✓  Already Up to Date")
             self._progress_bar.setRange(0, 1)
             self._progress_bar.setValue(1)
             self._progress_stats.setText("No files changed since last backup")
@@ -991,7 +991,7 @@ class BackupBrowserWidget(QWidget):
             return
 
         # Show progress
-        self._progress_title.setText("🔍 Verifying Integrity")
+        self._progress_title.setText("◎  Verifying Integrity")
         self._progress_bar.setRange(0, 0)
         self._progress_file.setText("Verifying backup integrity…")
         self._progress_stats.setText("")
