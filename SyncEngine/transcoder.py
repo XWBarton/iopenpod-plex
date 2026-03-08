@@ -553,15 +553,21 @@ def transcode(
 
     # Build ffmpeg command
     if target == TranscodeTarget.ALAC:
-        # Lossless transcoding to ALAC
+        # Lossless transcoding to ALAC.
+        # iPod Video/Classic supports ALAC at 16-bit/44.1 kHz stereo only.
+        # Without these flags, hi-res FLACs (96kHz, 192kHz, 24-bit, 5.1)
+        # produce ALAC files the iPod cannot decode, causing skipping/silence.
         cmd = [
             ffmpeg,
             "-i",
             str(source_path),
-            "-vn",  # No video
-            "-acodec",
-            "alac",  # Apple Lossless
-            "-y",  # Overwrite output
+            "-vn",                      # No video
+            "-acodec", "alac",          # Apple Lossless
+            "-ar", "44100",             # 44.1 kHz — required by all iPod generations
+            "-ac", "2",                 # Stereo downmix
+            "-sample_fmt", "s16p",      # 16-bit — iPod Video spec limit
+            "-movflags", "+faststart",  # moov atom at front → no extra HDD seek on iPod
+            "-y",                       # Overwrite output
             str(output_path),
         ]
     elif target == TranscodeTarget.VIDEO_H264:

@@ -128,6 +128,10 @@ class AppSettings:
     # Show album art in the track list view
     show_art_in_tracklist: bool = True
 
+    # Sidebar tabs hidden by the user (list of category names).
+    # Empty = all tabs shown.
+    hidden_sidebar_tabs: list = field(default_factory=list)
+
     # Remembered window dimensions (not exposed in settings UI).
     window_width: int = 1280
     window_height: int = 720
@@ -142,6 +146,16 @@ class AppSettings:
 
     # Plex auth token (obtained via PIN login flow). Empty = not logged in.
     plex_token: str = ""
+
+    # ── Pinepods ─────────────────────────────────────────────────────────────
+    # Pinepods server base URL (e.g. http://192.168.1.10:8040).
+    pinepods_url: str = ""
+
+    # Pinepods API key (obtained after login). Empty = not logged in.
+    pinepods_api_key: str = ""
+
+    # Pinepods numeric user ID (obtained after login).
+    pinepods_user_id: int = 0
 
     # ── Scrobbling ──────────────────────────────────────────────────────────
     # Submit iPod play counts to ListenBrainz after each sync.

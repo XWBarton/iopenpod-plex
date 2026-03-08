@@ -37,7 +37,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QListWidget, QListWidgetItem, QStackedWidget,
     QFrame, QProgressBar, QSplitter, QWidget, QMessageBox,
-    QScrollArea, QSizePolicy,
+    QScrollArea, QSizePolicy, QComboBox,
 )
 
 from ..styles import Colors, FONT_FAMILY, Metrics, btn_css, accent_btn_css
@@ -769,7 +769,7 @@ class _BrowserPage(QWidget):
         header.addWidget(self._disconnect_btn)
         root.addLayout(header)
 
-        # ── Search ────────────────────────────────────────────────────
+        # ── Search + Sort ─────────────────────────────────────────────
         search_row = QHBoxLayout()
         search_row.setSpacing(6)
 
@@ -788,6 +788,39 @@ class _BrowserPage(QWidget):
         """)
         self._search_edit.textChanged.connect(self._on_filter)
         search_row.addWidget(self._search_edit)
+
+        self._sort_combo = QComboBox()
+        self._sort_combo.addItems([
+            "Artist A–Z",
+            "Artist Z–A",
+            "Album A–Z",
+            "Album Z–A",
+            "Year ↓",
+            "Year ↑",
+        ])
+        self._sort_combo.setFont(QFont(FONT_FAMILY, 10))
+        self._sort_combo.setStyleSheet(f"""
+            QComboBox {{
+                background: {Colors.SURFACE};
+                border: 1px solid {Colors.BORDER};
+                border-radius: {Metrics.BORDER_RADIUS}px;
+                color: {Colors.TEXT_PRIMARY};
+                padding: 6px 10px;
+                min-width: 110px;
+            }}
+            QComboBox:focus {{ border-color: {Colors.ACCENT}; }}
+            QComboBox::drop-down {{ border: none; width: 20px; }}
+            QComboBox QAbstractItemView {{
+                background: {Colors.SURFACE};
+                color: {Colors.TEXT_PRIMARY};
+                border: 1px solid {Colors.BORDER};
+                selection-background-color: {Colors.ACCENT};
+            }}
+        """)
+        self._sort_combo.currentIndexChanged.connect(
+            lambda _: self._on_filter(self._search_edit.text())
+        )
+        search_row.addWidget(self._sort_combo)
 
         root.addLayout(search_row)
 
@@ -943,10 +976,31 @@ class _BrowserPage(QWidget):
         self._loading_bar.hide()
         self._status_label.setText(f"Error: {message}")
 
+    def _sort_key(self, a: dict):
+        """Return a sort key tuple for album dict based on the current combo selection."""
+        idx = self._sort_combo.currentIndex()
+        artist = (a.get("artist") or "").lower()
+        title  = (a.get("title")  or "").lower()
+        year   = a.get("year") or 0
+        try:
+            year = int(year)
+        except (ValueError, TypeError):
+            year = 0
+
+        if idx == 0:   return (artist, title)          # Artist A–Z
+        if idx == 1:   return (-ord(artist[0]) if artist else 0, artist, title)  # Artist Z–A (negate)
+        if idx == 2:   return (title, artist)          # Album A–Z
+        if idx == 3:   return (title, artist)          # Album Z–A (reversed below)
+        if idx == 4:   return (-year, artist, title)   # Year newest first
+        if idx == 5:   return (year,  artist, title)   # Year oldest first
+        return (artist, title)
+
     def _on_filter(self, query: str):
-        """Client-side fuzzy filter over the full album list."""
+        """Client-side fuzzy filter + sort over the full album list."""
         self._album_list.clear()
         q = query.strip()
+        idx = self._sort_combo.currentIndex()
+        reverse_sort = (idx == 1 or idx == 3)  # Z–A sorts need reversed order
 
         if q:
             scored = [
@@ -954,10 +1008,11 @@ class _BrowserPage(QWidget):
                 for a in self._albums
             ]
             matches = [(a, s) for a, s in scored if s > 0]
-            matches.sort(key=lambda x: -x[1])
+            # Primary: fuzzy score desc; secondary: chosen sort order
+            matches.sort(key=lambda x: (-x[1], self._sort_key(x[0])))
             filtered = [a for a, _ in matches]
         else:
-            filtered = self._albums
+            filtered = sorted(self._albums, key=self._sort_key, reverse=reverse_sort)
 
         for a in filtered:
             year = f" ({a['year']})" if a.get("year") else ""

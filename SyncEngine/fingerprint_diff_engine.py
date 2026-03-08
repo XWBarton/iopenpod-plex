@@ -286,6 +286,10 @@ METADATA_FIELDS: dict[str, str] = {
     "lyrics": "Lyrics",
     # Volume normalization
     "sound_check": "soundCheck",
+    # Gapless playback — always sync so old uploads with wrong values are repaired
+    "pregap": "pregap",
+    "postgap": "postgap",
+    "sample_count": "sampleCount",
 }
 
 # Writer defaults for fields where "empty" on PC becomes a non-zero value
@@ -519,6 +523,26 @@ class FingerprintDiffEngine:
         if progress_callback:
             progress_callback("diff", 0, 0, "Computing differences...")
 
+        # Metadata index for dedup fallback: tracks on the iPod that have no
+        # mapping entry (e.g. synced via iTunes) still get detected.
+        # Key: (title, artist, album) all lowercased+stripped.
+        def _meta_key(title, artist, album):
+            return (
+                (title or "").strip().lower(),
+                (artist or "").strip().lower(),
+                (album or "").strip().lower(),
+            )
+
+        ipod_meta_index: dict[tuple, dict] = {}
+        for t in ipod_tracks:
+            k = _meta_key(
+                t.get("Title") or t.get("title"),
+                t.get("Artist") or t.get("artist"),
+                t.get("Album") or t.get("album"),
+            )
+            if k[0]:  # only index tracks with a title
+                ipod_meta_index[k] = t
+
         # For fingerprints with multiple album groups, we need to track which
         # mapping entries have already been claimed so each PC track gets its own.
         claimed_dbids: set[int] = set()
@@ -529,6 +553,22 @@ class FingerprintDiffEngine:
             mapping_entries = mapping.get_entries(fp)
 
             if not mapping_entries:
+                # Metadata fallback: check if an iPod track with the same
+                # title/artist/album already exists (e.g. iTunes-synced tracks
+                # that have no fingerprint mapping entry yet).
+                meta_k = _meta_key(pc_track.title, pc_track.artist, pc_track.album)
+                existing = ipod_meta_index.get(meta_k) if meta_k[0] else None
+                if existing is not None:
+                    existing_dbid = existing.get("dbid") or existing.get("Dbid") or 0
+                    logger.info(
+                        "Metadata dedup: skipping '%s - %s' (already on iPod, dbid=%s)",
+                        pc_track.artist, pc_track.title, existing_dbid,
+                    )
+                    plan.matched_tracks += 1
+                    if existing_dbid:
+                        plan.matched_pc_paths[existing_dbid] = str(pc_track.path)
+                    continue
+
                 # NEW TRACK: Not in mapping → Add
                 plan.to_add.append(SyncItem(
                     action=SyncAction.ADD_TO_IPOD,
@@ -1007,6 +1047,16 @@ class FingerprintDiffEngine:
                     changes[pc_field] = (pc_value, ipod_value)
             elif pc_value != ipod_value:
                 changes[pc_field] = (pc_value, ipod_value)
+
+        # gapless_track_flag is derived from pregap/postgap — compare it explicitly
+        # so tracks uploaded with the old buggy code (flag=1, but no real LAME header)
+        # get corrected on the next sync.
+        pc_pregap = getattr(pc_track, "pregap", 0) or 0
+        pc_postgap = getattr(pc_track, "postgap", 0) or 0
+        expected_flag = 1 if (pc_pregap or pc_postgap) else 0
+        ipod_flag = int(ipod_track.get("gaplessTrackFlag", 0) or 0)
+        if expected_flag != ipod_flag:
+            changes["gapless_track_flag"] = (expected_flag, ipod_flag)
 
         return changes
 

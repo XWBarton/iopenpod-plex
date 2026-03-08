@@ -50,16 +50,17 @@ _DARK_PALETTE: dict[str, str] = {
     "ACCENT_DIM": "rgba(64,156,255,80)",
     "ACCENT_HOVER": "rgba(64,156,255,120)",
     "ACCENT_PRESS": "rgba(64,156,255,60)",
+    "ACCENT_MUTED": "rgba(64,156,255,22)",
     "ACCENT_BORDER": "rgba(64,156,255,100)",
     # Surfaces
-    "BG_DARK": "#1a1a2e",
-    "BG_MID": "#1e1e32",
+    "BG_DARK": "#0c0c14",
+    "BG_MID": "#101019",
     "SURFACE": "rgba(255,255,255,8)",
     "SURFACE_ALT": "rgba(255,255,255,12)",
     "SURFACE_RAISED": "rgba(255,255,255,18)",
     "SURFACE_HOVER": "rgba(255,255,255,25)",
-    "SURFACE_ACTIVE": "rgba(255,255,255,35)",
-    "MENU_BG": "#2a2a40",
+    "SURFACE_ACTIVE": "rgba(255,255,255,40)",
+    "MENU_BG": "#1a1a28",
     # Text
     "TEXT_PRIMARY": "rgba(255,255,255,230)",
     "TEXT_SECONDARY": "rgba(255,255,255,150)",
@@ -81,10 +82,10 @@ _DARK_PALETTE: dict[str, str] = {
     "SCROLLBAR_THUMB_HOVER": "rgba(255,255,255,110)",
     "SCROLLBAR_THUMB_PRESS": "rgba(255,255,255,140)",
     # Dialog / message box backgrounds (opaque, used in QSS strings)
-    "DIALOG_BG": "#222233",
-    "MSGBOX_BG": "#222233",
+    "DIALOG_BG": "#12121c",
+    "MSGBOX_BG": "#12121c",
     "MSGBOX_FG": "white",
-    "TOOLTIP_BG": "#2a2d3a",
+    "TOOLTIP_BG": "#1e1e2c",
 }
 
 _LIGHT_PALETTE: dict[str, str] = {
@@ -94,6 +95,7 @@ _LIGHT_PALETTE: dict[str, str] = {
     "ACCENT_DIM": "rgba(26,125,232,100)",
     "ACCENT_HOVER": "rgba(26,125,232,150)",
     "ACCENT_PRESS": "rgba(26,125,232,70)",
+    "ACCENT_MUTED": "rgba(26,125,232,18)",
     "ACCENT_BORDER": "rgba(26,125,232,180)",
     # Surfaces — light gray / white tones
     "BG_DARK": "#f2f2f7",
@@ -125,8 +127,8 @@ _LIGHT_PALETTE: dict[str, str] = {
     "SCROLLBAR_THUMB_HOVER": "rgba(0,0,0,65)",
     "SCROLLBAR_THUMB_PRESS": "rgba(0,0,0,85)",
     # Dialog / message box backgrounds
-    "DIALOG_BG": "#f8f8fc",
-    "MSGBOX_BG": "#f2f2f7",
+    "DIALOG_BG": "#f0f0f5",
+    "MSGBOX_BG": "#ebebf0",
     "MSGBOX_FG": "rgba(0,0,0,222)",
     "TOOLTIP_BG": "#ffffff",
 }
@@ -147,15 +149,16 @@ class Colors:
     ACCENT_DIM = "rgba(64,156,255,80)"
     ACCENT_HOVER = "rgba(64,156,255,120)"
     ACCENT_PRESS = "rgba(64,156,255,60)"
+    ACCENT_MUTED = "rgba(64,156,255,22)"
     ACCENT_BORDER = "rgba(64,156,255,100)"
-    BG_DARK = "#1a1a2e"
-    BG_MID = "#1e1e32"
+    BG_DARK = "#0c0c14"
+    BG_MID = "#101019"
     SURFACE = "rgba(255,255,255,8)"
     SURFACE_ALT = "rgba(255,255,255,12)"
     SURFACE_RAISED = "rgba(255,255,255,18)"
     SURFACE_HOVER = "rgba(255,255,255,25)"
-    SURFACE_ACTIVE = "rgba(255,255,255,35)"
-    MENU_BG = "#2a2a40"
+    SURFACE_ACTIVE = "rgba(255,255,255,40)"
+    MENU_BG = "#1a1a28"
     TEXT_PRIMARY = "rgba(255,255,255,230)"
     TEXT_SECONDARY = "rgba(255,255,255,150)"
     TEXT_TERTIARY = "rgba(255,255,255,100)"
@@ -172,10 +175,10 @@ class Colors:
     SCROLLBAR_THUMB = "rgba(255,255,255,70)"
     SCROLLBAR_THUMB_HOVER = "rgba(255,255,255,110)"
     SCROLLBAR_THUMB_PRESS = "rgba(255,255,255,140)"
-    DIALOG_BG = "#222233"
-    MSGBOX_BG = "#222233"
+    DIALOG_BG = "#12121c"
+    MSGBOX_BG = "#12121c"
     MSGBOX_FG = "white"
-    TOOLTIP_BG = "#2a2d3a"
+    TOOLTIP_BG = "#1e1e2c"
 
 
 # Track the active theme name for reference elsewhere
@@ -538,6 +541,8 @@ def accent_btn_css() -> str:
         bg_press=Colors.ACCENT_PRESS,
         fg="white",
         border=f"1px solid {Colors.ACCENT_BORDER}",
+        radius=Metrics.BORDER_RADIUS,
+        padding=f"10px {Metrics.BTN_PADDING_H}px",
     )
 
 
@@ -551,7 +556,7 @@ def get_app_stylesheet() -> str:
     return f"""
     /* ── Base ──────────────────────────────────────────────────── */
     QMainWindow {{
-        background: qlineargradient(x1:0, y1:0, x2:0.4, y2:1,
+        background: qlineargradient(x1:0, y1:0, x2:0.2, y2:1,
             stop:0 {Colors.BG_DARK}, stop:1 {Colors.BG_MID});
     }}
     QWidget {{
@@ -570,8 +575,8 @@ def get_app_stylesheet() -> str:
         background: {Colors.TOOLTIP_BG};
         color: {Colors.TEXT_PRIMARY};
         border: 1px solid {Colors.BORDER};
-        border-radius: 4px;
-        padding: 4px 8px;
+        border-radius: 6px;
+        padding: 5px 10px;
         font-size: 11px;
     }}
 
@@ -610,6 +615,92 @@ def get_app_stylesheet() -> str:
     QDialog {{
         background: {Colors.DIALOG_BG};
         color: {Colors.TEXT_PRIMARY};
+    }}
+
+    /* ── Input dialogs ──────────────────────────────────────────── */
+    QInputDialog {{
+        background: {Colors.DIALOG_BG};
+        color: {Colors.TEXT_PRIMARY};
+    }}
+    QInputDialog QLabel {{
+        color: {Colors.TEXT_PRIMARY};
+    }}
+    QInputDialog QLineEdit {{
+        background: {Colors.SURFACE_ALT};
+        color: {Colors.TEXT_PRIMARY};
+        border: 1px solid {Colors.BORDER};
+        border-radius: {Metrics.BORDER_RADIUS_SM}px;
+        padding: 6px 10px;
+    }}
+    QInputDialog QPushButton {{
+        background: {Colors.SURFACE_RAISED};
+        border: 1px solid {Colors.BORDER};
+        border-radius: {Metrics.BORDER_RADIUS_SM}px;
+        color: {Colors.TEXT_PRIMARY};
+        padding: 6px 20px;
+        min-width: 70px;
+    }}
+    QInputDialog QPushButton:hover {{
+        background: {Colors.SURFACE_HOVER};
+    }}
+
+    /* ── Combo boxes ─────────────────────────────────────────────── */
+    QComboBox {{
+        background: {Colors.SURFACE_RAISED};
+        color: {Colors.TEXT_PRIMARY};
+        border: 1px solid {Colors.BORDER};
+        border-radius: {Metrics.BORDER_RADIUS_SM}px;
+        padding: 5px 10px;
+    }}
+    QComboBox:hover {{
+        background: {Colors.SURFACE_HOVER};
+        border-color: {Colors.ACCENT_BORDER};
+    }}
+    QComboBox::drop-down {{
+        border: none;
+        width: 20px;
+    }}
+    QComboBox QAbstractItemView {{
+        background: {Colors.MENU_BG};
+        color: {Colors.TEXT_PRIMARY};
+        border: 1px solid {Colors.BORDER};
+        border-radius: {Metrics.BORDER_RADIUS_SM}px;
+        selection-background-color: {Colors.ACCENT_DIM};
+        outline: none;
+    }}
+
+    /* ── Line edits ──────────────────────────────────────────────── */
+    QLineEdit {{
+        background: {Colors.SURFACE_ALT};
+        color: {Colors.TEXT_PRIMARY};
+        border: 1px solid {Colors.BORDER_SUBTLE};
+        border-radius: {Metrics.BORDER_RADIUS_SM}px;
+        padding: 6px 10px;
+    }}
+    QLineEdit:focus {{
+        border-color: {Colors.BORDER_FOCUS};
+    }}
+
+    /* ── Menus ───────────────────────────────────────────────────── */
+    QMenu {{
+        background: {Colors.MENU_BG};
+        color: {Colors.TEXT_PRIMARY};
+        border: 1px solid {Colors.BORDER};
+        border-radius: {Metrics.BORDER_RADIUS}px;
+        padding: 4px 0;
+    }}
+    QMenu::item {{
+        padding: 6px 20px;
+        border-radius: 4px;
+        margin: 1px 4px;
+    }}
+    QMenu::item:selected {{
+        background: {Colors.ACCENT_DIM};
+    }}
+    QMenu::separator {{
+        height: 1px;
+        background: {Colors.BORDER_SUBTLE};
+        margin: 4px 8px;
     }}
 """
 

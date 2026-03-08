@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 # Default cache location
 DEFAULT_CACHE_DIR = Path.home() / ".iopenpod" / "transcode_cache"
 
+# Bump this whenever transcode parameters change (e.g. sample rate, bit depth)
+# so that stale cached files are automatically discarded.
+_CACHE_VERSION = 3
+
 
 @dataclass
 class CachedFile:
@@ -54,7 +58,7 @@ class CachedFile:
 class CacheIndex:
     """Index of all cached transcoded files."""
 
-    version: int = 1
+    version: int = _CACHE_VERSION
     _files: dict[str, CachedFile] | None = None  # cache_key → CachedFile
 
     def __post_init__(self):
@@ -164,6 +168,23 @@ class TranscodeCache:
         try:
             with open(self.index_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+
+            # If the cache was built with an older version of the transcode
+            # parameters (e.g. before we enforced 16-bit/44100 Hz for ALAC),
+            # discard it entirely so stale files don't get reused.
+            if data.get("version", 1) < _CACHE_VERSION:
+                logger.info(
+                    f"Transcode cache version {data.get('version', 1)} is older than "
+                    f"current {_CACHE_VERSION} — clearing stale cache"
+                )
+                # Remove all cached files on disk
+                try:
+                    for f_path in self.files_dir.iterdir():
+                        f_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                return CacheIndex(version=_CACHE_VERSION)
+
             index = CacheIndex.from_dict(data)
             logger.info(f"Loaded cache index: {index.count} files")
             return index

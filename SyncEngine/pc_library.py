@@ -195,24 +195,27 @@ def _extract_gapless_info(audio) -> dict:
     if info is None:
         return result
 
-    # Total samples (critical for gapless)
-    # mutagen exposes this as info.length * info.sample_rate for most formats
-    sample_rate = getattr(info, "sample_rate", 0)
-    length = getattr(info, "length", 0)
-    if sample_rate and length:
-        result["sample_count"] = int(length * sample_rate)
-
     # MP3-specific: encoder delay / padding (LAME header)
-    # mutagen stores this in info.encoder_info for LAME-encoded MP3s
-    encoder_delay = getattr(info, "encoder_delay", 0)
+    encoder_delay   = getattr(info, "encoder_delay",   0)
     encoder_padding = getattr(info, "encoder_padding", 0)
     if encoder_delay:
         result["pregap"] = encoder_delay
-    # encoder_padding maps to iPod's postgap field (0xC8 in MHIT).
-    # Previously we incorrectly stored this as gapless_data (0xF8),
-    # which is an opaque iTunes-computed field.
     if encoder_padding:
         result["postgap"] = encoder_padding
+
+    # Total samples for gapless alignment.
+    # The iPod expects sample_count to be the CONTENT samples only —
+    # i.e. total decoded frames minus the encoder delay and padding.
+    # Using the raw total (info.length * info.sample_rate) makes the iPod
+    # think the track is longer than the actual audio, causing it to read
+    # past the end and misalign the next track boundary (CD-like skipping).
+    sample_rate = getattr(info, "sample_rate", 0)
+    length      = getattr(info, "length",      0)
+    if sample_rate and length:
+        total_samples = int(length * sample_rate)
+        # Subtract encoder boundaries so sample_count = real content only
+        content_samples = total_samples - encoder_delay - encoder_padding
+        result["sample_count"] = max(0, content_samples)
 
     # VBR detection — mutagen exposes bitrate_mode on MP3 info objects
     # BitrateMode.VBR = 2, BitrateMode.ABR = 1, BitrateMode.CBR = 0
@@ -858,9 +861,9 @@ class PCLibrary:
                     except (ValueError, TypeError, IndexError):
                         pass
 
-        # Podcast flag (PCST frame — Apple non-standard ID3)
-        pcst = tags.get('PCST')
-        if pcst and hasattr(pcst, 'text') and pcst.text:
+        # Podcast flag (PCST frame — Apple non-standard ID3 BinaryFrame)
+        # Mere presence of the frame marks the track as a podcast (no text content needed)
+        if tags.get('PCST') is not None:
             metadata['is_podcast'] = True
 
         # Podcast category (TCAT frame — Apple non-standard ID3)

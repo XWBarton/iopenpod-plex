@@ -495,32 +495,34 @@ class MusicBrowserList(QFrame):
 
         t.setStyleSheet(f"""
             QTableWidget {{
-                background-color: rgba(0,0,0,20);
-                alternate-background-color: rgba(255,255,255,4);
+                background-color: {Colors.SURFACE};
+                alternate-background-color: {Colors.SURFACE_ALT};
                 border: none;
                 color: {Colors.TEXT_PRIMARY};
-                gridline-color: {Colors.GRIDLINE};
+                gridline-color: transparent;
                 selection-background-color: {Colors.SELECTION};
                 outline: none;
             }}
             QTableWidget::item {{
-                padding: 6px 8px;
-                border-bottom: 1px solid {Colors.BORDER_SUBTLE};
+                padding: 5px 8px;
+                border: none;
             }}
             QTableWidget::item:selected {{
                 background-color: {Colors.SELECTION};
+                color: {Colors.TEXT_PRIMARY};
             }}
             QTableWidget::item:hover {{
-                background-color: rgba(255,255,255,6);
+                background-color: {Colors.SURFACE_RAISED};
             }}
             QHeaderView::section {{
                 background-color: {Colors.SURFACE_ALT};
-                color: {Colors.TEXT_SECONDARY};
-                padding: 6px 8px;
+                color: {Colors.TEXT_TERTIARY};
+                padding: 5px 8px;
                 border: none;
+                border-right: 1px solid {Colors.BORDER_SUBTLE};
                 border-bottom: 1px solid {Colors.BORDER};
                 font-weight: 600;
-                font-size: 11px;
+                font-size: 10px;
             }}
             QHeaderView::section:hover {{
                 background-color: {Colors.SURFACE_RAISED};
@@ -529,7 +531,9 @@ class MusicBrowserList(QFrame):
             QHeaderView::section:pressed {{
                 background-color: {Colors.SURFACE_ACTIVE};
             }}
-            /* Corner button (top-left) */
+            QHeaderView::section:last {{
+                border-right: none;
+            }}
             QTableCornerButton::section {{
                 background-color: {Colors.SURFACE_ALT};
                 border: none;

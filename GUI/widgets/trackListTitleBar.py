@@ -2,7 +2,7 @@ from PyQt6.QtCore import Qt, QPoint
 from PyQt6.QtWidgets import QHBoxLayout, QFrame, QLabel, QPushButton, QWidget
 from PyQt6.QtGui import QFont
 
-from ..styles import FONT_FAMILY
+from ..styles import Colors, FONT_FAMILY
 
 
 def _title_bar_css(r1: int, g1: int, b1: int, r2: int, g2: int, b2: int,
@@ -12,7 +12,7 @@ def _title_bar_css(r1: int, g1: int, b1: int, r2: int, g2: int, b2: int,
     return f"""
         QFrame {{
             background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 rgba({r1},{g1},{b1},220), stop:1 rgba({r2},{g2},{b2},220));
+                stop:0 rgba({r1},{g1},{b1},210), stop:1 rgba({r2},{g2},{b2},210));
             border: none;
             border-radius: 0px;
         }}
@@ -42,8 +42,38 @@ def _title_bar_css(r1: int, g1: int, b1: int, r2: int, g2: int, b2: int,
     """
 
 
-# Default blue gradient
-_DEFAULT_CSS = _title_bar_css(64, 156, 255, 40, 110, 200)
+def _default_title_bar_css() -> str:
+    """Generate the default (no album selected) title bar stylesheet."""
+    return f"""
+        QFrame {{
+            background: {Colors.SURFACE_ALT};
+            border: none;
+            border-radius: 0px;
+        }}
+        QLabel {{
+            font-weight: 600;
+            font-size: 12px;
+            color: {Colors.TEXT_PRIMARY};
+            background: transparent;
+        }}
+        QPushButton {{
+            background-color: transparent;
+            border: none;
+            color: {Colors.TEXT_SECONDARY};
+            font-size: 14px;
+            font-weight: bold;
+            width: 26px;
+            height: 26px;
+            border-radius: 4px;
+        }}
+        QPushButton:hover {{
+            background-color: {Colors.SURFACE_HOVER};
+            color: {Colors.TEXT_PRIMARY};
+        }}
+        QPushButton:pressed {{
+            background-color: {Colors.SURFACE_ACTIVE};
+        }}
+    """
 
 
 class TrackListTitleBar(QFrame):
@@ -63,7 +93,7 @@ class TrackListTitleBar(QFrame):
         self.setMaximumHeight(34)
         self.setFixedHeight(34)
 
-        self.setStyleSheet(_DEFAULT_CSS)
+        self.setStyleSheet(_default_title_bar_css())
 
         self.title = QLabel("Tracks")
         self.title.setFont(QFont(FONT_FAMILY, 12, QFont.Weight.DemiBold))
@@ -102,7 +132,7 @@ class TrackListTitleBar(QFrame):
 
     def resetColor(self):
         """Reset to the default blue gradient."""
-        self.setStyleSheet(_DEFAULT_CSS)
+        self.setStyleSheet(_default_title_bar_css())
 
     def _toggleMinimize(self):
         """Minimize the track list panel."""

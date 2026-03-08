@@ -9,7 +9,7 @@ from PyQt6.QtCore import pyqtSignal, pyqtSlot, Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QCheckBox, QComboBox, QFrame, QScrollArea, QFileDialog,
-    QLineEdit,
+    QLineEdit, QGridLayout,
 )
 from PyQt6.QtGui import QFont
 from pathlib import Path
@@ -513,6 +513,95 @@ class _TokenRow(SettingRow):
         self.token_changed.emit("")
 
 
+# ── Sidebar tabs card ───────────────────────────────────────────────────────
+
+class _SidebarTabsCard(QFrame):
+    """Compact card with a checkbox per sidebar category."""
+
+    TABS = [
+        "Albums", "Artists", "Tracks", "Playlists", "Genres",
+        "Podcasts", "Audiobooks", "Videos", "Movies", "TV Shows", "Music Videos",
+    ]
+
+    changed = pyqtSignal(list)  # emits list of hidden tab names
+
+    def __init__(self):
+        super().__init__()
+        self.setStyleSheet(f"""
+            QFrame {{
+                background: {Colors.SURFACE_ALT};
+                border: 1px solid {Colors.BORDER_SUBTLE};
+                border-radius: {Metrics.BORDER_RADIUS}px;
+            }}
+        """)
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(16, 12, 16, 12)
+        outer.setSpacing(8)
+
+        title = QLabel("Sidebar Tabs")
+        title.setFont(QFont(FONT_FAMILY, 11, QFont.Weight.DemiBold))
+        title.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; background: transparent; border: none;")
+        outer.addWidget(title)
+
+        desc = QLabel("Choose which sections appear in the sidebar library list.")
+        desc.setFont(QFont(FONT_FAMILY, 9))
+        desc.setStyleSheet(f"color: {Colors.TEXT_TERTIARY}; background: transparent; border: none;")
+        outer.addWidget(desc)
+
+        grid_widget = QWidget()
+        grid_widget.setStyleSheet("background: transparent; border: none;")
+        grid = QGridLayout(grid_widget)
+        grid.setContentsMargins(0, 4, 0, 0)
+        grid.setSpacing(6)
+
+        cb_style = f"""
+            QCheckBox {{
+                color: {Colors.TEXT_SECONDARY};
+                background: transparent;
+                border: none;
+                spacing: 6px;
+            }}
+            QCheckBox::indicator {{
+                width: 16px; height: 16px;
+                border-radius: 4px;
+                background: rgba(255,255,255,20);
+                border: 1px solid rgba(255,255,255,30);
+            }}
+            QCheckBox::indicator:checked {{
+                background: {Colors.ACCENT};
+                border: 1px solid {Colors.ACCENT};
+            }}
+        """
+
+        self._checks: dict[str, QCheckBox] = {}
+        cols = 3
+        for i, tab in enumerate(self.TABS):
+            cb = QCheckBox(tab)
+            cb.setChecked(True)
+            cb.setFont(QFont(FONT_FAMILY, 10))
+            cb.setStyleSheet(cb_style)
+            cb.toggled.connect(self._on_changed)
+            grid.addWidget(cb, i // cols, i % cols)
+            self._checks[tab] = cb
+
+        outer.addWidget(grid_widget)
+
+    def _on_changed(self):
+        self.changed.emit(self.hidden_tabs)
+
+    @property
+    def hidden_tabs(self) -> list:
+        return [tab for tab, cb in self._checks.items() if not cb.isChecked()]
+
+    @hidden_tabs.setter
+    def hidden_tabs(self, hidden: list):
+        for tab, cb in self._checks.items():
+            cb.blockSignals(True)
+            cb.setChecked(tab not in hidden)
+            cb.blockSignals(False)
+
+
 # ── Main settings page ─────────────────────────────────────────────────────
 
 class SettingsPage(QWidget):
@@ -716,6 +805,9 @@ class SettingsPage(QWidget):
         )
         layout.addWidget(self.show_art)
 
+        self.sidebar_tabs_card = _SidebarTabsCard()
+        layout.addWidget(self.sidebar_tabs_card)
+
         # ── STORAGE section ─────────────────────────────────────────────────
         layout.addWidget(self._section_label("STORAGE"))
 
@@ -825,6 +917,7 @@ class SettingsPage(QWidget):
             self.theme.combo.setCurrentIndex(idx)
 
         self.show_art.value = s.show_art_in_tracklist
+        self.sidebar_tabs_card.hidden_tabs = s.hidden_sidebar_tabs
         self.transcode_cache_dir.value = s.transcode_cache_dir
         self.settings_dir.value = s.settings_dir
         self.log_dir.value = s.log_dir
@@ -882,6 +975,7 @@ class SettingsPage(QWidget):
             self.video_preset.changed.connect(self._save)
             self.sync_workers.changed.connect(self._save)
             self.show_art.changed.connect(self._save)
+            self.sidebar_tabs_card.changed.connect(self._save)
             self.transcode_cache_dir.changed.connect(self._save)
             self.settings_dir.changed.connect(self._save)
             self.log_dir.changed.connect(self._save)
@@ -912,6 +1006,7 @@ class SettingsPage(QWidget):
 
         s.theme = "light" if self.theme.value == "Light" else "dark"
         s.show_art_in_tracklist = self.show_art.value
+        s.hidden_sidebar_tabs = self.sidebar_tabs_card.hidden_tabs
         s.transcode_cache_dir = self.transcode_cache_dir.value
         s.settings_dir = self.settings_dir.value
         s.log_dir = self.log_dir.value

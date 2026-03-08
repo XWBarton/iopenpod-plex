@@ -1065,6 +1065,7 @@ class MainWindow(QMainWindow):
         # Load persisted settings
         settings = get_settings()
         self._last_pc_folder = settings.music_folder or os.path.join(os.path.expanduser("~"), "Music")
+        self.sidebar.apply_tab_visibility(settings.hidden_sidebar_tabs)
 
         self.sidebar.category_changed.connect(
             self.musicBrowser.updateCategory)  # Connect the signal to the slot
@@ -1078,12 +1079,19 @@ class MainWindow(QMainWindow):
         # Connect rescan button to rebuild cache
         self.sidebar.rescanButton.clicked.connect(self.resyncDevice)
 
+        # Connect eject button
+        self.sidebar.ejectButton.clicked.connect(self.ejectDevice)
+
         # Connect sync button to PC sync
         self.sidebar.syncButton.clicked.connect(self.startPCSync)
 
         # Connect Plex button
         self.sidebar.plexButton.clicked.connect(self.startPlexSync)
         self._plex_temp_dir: str = ""
+
+        # Connect Pinepods button
+        self.sidebar.pinepodsButton.clicked.connect(self.startPinepodsSync)
+        self._pinepods_temp_dir: str = ""
 
         # Connect Manage iPod button
         self.sidebar.manageButton.clicked.connect(self.showIPodBrowser)
@@ -1310,6 +1318,31 @@ class MainWindow(QMainWindow):
         # Start loading (will emit data_ready when done)
         cache.start_loading()
 
+    def ejectDevice(self):
+        """Unmount/eject the current iPod."""
+        import subprocess
+        import sys as _sys
+        device = DeviceManager.get_instance()
+        path = device.device_path
+        if not path:
+            return
+
+        # Run platform-appropriate eject command
+        if _sys.platform == "darwin":
+            result = subprocess.run(["diskutil", "eject", path], capture_output=True, text=True)
+        else:
+            result = subprocess.run(["umount", path], capture_output=True, text=True)
+
+        if result.returncode != 0:
+            QMessageBox.warning(self, "Eject Failed", result.stderr.strip() or "Could not eject the device.")
+            return
+
+        # Clear device state
+        DeviceManager.get_instance().device_path = None
+        self.sidebar.clearDeviceInfo()
+        self.musicBrowser.browserGrid.clearGrid()
+        self.musicBrowser.browserTrack.clearTable()
+
     def _onDeviceRenamed(self, new_name: str):
         """Handle device rename from sidebar — update master playlist and write to iPod."""
         device = DeviceManager.get_instance()
@@ -1527,6 +1560,75 @@ class MainWindow(QMainWindow):
         self._populate_playlist_changes(plan, cache)
         self.syncReview.show_plan(plan)
 
+    def startPinepodsSync(self):
+        """Open the Pinepods browser; download selected episodes and sync to iPod."""
+        device = DeviceManager.get_instance()
+        if not device.device_path:
+            QMessageBox.warning(self, "No Device", "Please select an iPod device first.")
+            return
+
+        cache = iTunesDBCache.get_instance()
+        if not cache.is_ready():
+            QMessageBox.information(self, "Not Ready", "iPod library is still loading.")
+            return
+
+        from GUI.widgets.pinepodsBrowser import PinepodsBrowserDialog
+        from GUI.settings import get_settings
+        settings = get_settings()
+
+        dlg = PinepodsBrowserDialog(
+            parent=self,
+            saved_url=settings.pinepods_url,
+            saved_api_key=settings.pinepods_api_key,
+            saved_user_id=settings.pinepods_user_id,
+        )
+        if dlg.exec() != PinepodsBrowserDialog.DialogCode.Accepted:
+            return
+
+        episodes = dlg.selected_episodes
+        if not episodes:
+            return
+
+        # Persist credentials
+        settings.pinepods_url     = dlg.selected_url
+        settings.pinepods_api_key = dlg.selected_api_key
+        settings.pinepods_user_id = dlg.selected_user_id
+        settings.save()
+
+        ipod_tracks = cache.get_tracks() or []
+        supports_video   = getattr(device, "supports_video",   False)
+        supports_podcast = getattr(device, "supports_podcast", True)
+
+        from GUI.widgets.pinepodsBrowser import PinepodsSyncWorker
+        self._pinepods_sync_worker = PinepodsSyncWorker(
+            base_url=dlg.selected_url,
+            api_key=dlg.selected_api_key,
+            user_id=dlg.selected_user_id,
+            episodes=episodes,
+            ipod_tracks=ipod_tracks,
+            ipod_path=device.device_path or "",
+            supports_video=supports_video,
+            supports_podcast=supports_podcast,
+        )
+
+        self.centralStack.setCurrentIndex(1)
+        self.syncReview.show_loading(
+            f"Downloading {len(episodes)} episode{'s' if len(episodes) != 1 else ''}…"
+        )
+        self._pinepods_sync_worker.progress.connect(self.syncReview.update_progress)
+        self._pinepods_sync_worker.finished.connect(self._onPinepodsDiffComplete)
+        self._pinepods_sync_worker.error.connect(self._onSyncError)
+        self._pinepods_sync_worker.start()
+
+    def _onPinepodsDiffComplete(self, plan, temp_dir: str):
+        """Show the sync plan after Pinepods download + diff."""
+        self._pinepods_temp_dir = temp_dir
+        self._plan = plan
+        cache = iTunesDBCache.get_instance()
+        self.syncReview._ipod_tracks_cache = cache.get_tracks() or []
+        self._populate_playlist_changes(plan, cache)
+        self.syncReview.show_plan(plan)
+
     def showIPodBrowser(self):
         """Open the iPod browser dialog to manage (remove) tracks from the device."""
         device = DeviceManager.get_instance()
@@ -1594,6 +1696,17 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 logger.warning("Could not delete Plex temp dir: %s", e)
         self._plex_temp_dir = ""
+
+    def _cleanupPinepodsTempDir(self):
+        """Delete the Pinepods download temp dir if present."""
+        if self._pinepods_temp_dir and os.path.isdir(self._pinepods_temp_dir):
+            try:
+                import shutil
+                shutil.rmtree(self._pinepods_temp_dir, ignore_errors=True)
+                logger.info("Deleted Pinepods temp dir: %s", self._pinepods_temp_dir)
+            except Exception as e:
+                logger.warning("Could not delete Pinepods temp dir: %s", e)
+        self._pinepods_temp_dir = ""
 
     def _download_missing_tools_then_sync(self, need_ffmpeg: bool, need_fpcalc: bool):
         """Download missing tools in a background thread, then restart sync."""
@@ -1699,6 +1812,7 @@ class MainWindow(QMainWindow):
         # Re-read persisted settings to pick up changes
         settings = get_settings()
         self._last_pc_folder = settings.music_folder or self._last_pc_folder
+        self.sidebar.apply_tab_visibility(settings.hidden_sidebar_tabs)
         self.centralStack.setCurrentIndex(0)
 
     def showBackupBrowser(self):
@@ -1792,8 +1906,9 @@ class MainWindow(QMainWindow):
                 errors=len(getattr(result, 'errors', [])),
             )
 
-        # Clean up Plex temp download dir if this was a Plex sync
+        # Clean up any temp download dirs (Plex or Pinepods)
         self._cleanupPlexTempDir()
+        self._cleanupPinepodsTempDir()
 
         # Reload the database to show changes (delay lets OS flush writes)
         QTimer.singleShot(500, self._rescanAfterSync)

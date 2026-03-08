@@ -191,9 +191,14 @@ def download_album(
         # Build download URL
         url = f"{base_url}{part.key}?X-Plex-Token={token}"
 
-        # Determine extension from the server file path
-        server_filename = part.file or ""
-        ext = Path(server_filename).suffix.lower() if server_filename else ".mp3"
+        # Determine extension: prefer part.container (reliable) over the server
+        # file path (can be None or mismatched).  e.g. container="flac" → ".flac"
+        container = getattr(part, "container", None) or getattr(track.media[0], "container", None)
+        if container:
+            ext = f".{container.lower().split('.')[-1]}"
+        else:
+            server_filename = part.file or ""
+            ext = Path(server_filename).suffix.lower() if server_filename else ""
         if not ext:
             ext = ".mp3"
 

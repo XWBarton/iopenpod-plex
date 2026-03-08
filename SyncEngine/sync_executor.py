@@ -823,10 +823,21 @@ class SyncExecutor:
                         track.skip_when_shuffling = bool(pc_value)
                     elif field_name == "rememberPosition":
                         track.remember_position = bool(pc_value)
+                    elif field_name == "gapless_track_flag":
+                        track.gapless_track_flag = pc_value if pc_value else 0
                     elif field_name == "gaplessTrackFlag":
                         track.gapless_track_flag = pc_value if pc_value else 0
                     elif field_name == "gaplessAlbumFlag":
                         track.gapless_album_flag = pc_value if pc_value else 0
+                    elif field_name == "pregap":
+                        track.pregap = int(pc_value) if pc_value else 0
+                        # Recompute flag now that pregap changed
+                        track.gapless_track_flag = 1 if (track.pregap or track.postgap) else 0
+                    elif field_name == "postgap":
+                        track.postgap = int(pc_value) if pc_value else 0
+                        track.gapless_track_flag = 1 if (track.pregap or track.postgap) else 0
+                    elif field_name == "sample_count":
+                        track.sample_count = int(pc_value) if pc_value else 0
                     elif field_name == "checked":
                         track.checked = pc_value if pc_value else 0
                     elif field_name == "playedMark":
@@ -1664,7 +1675,18 @@ class SyncExecutor:
             is_lossless_source = source_ext in ("flac", "wav", "aif", "aiff")
             if filetype == "m4a" and not is_lossless_source:
                 bitrate = self._aac_bitrate  # user-configured AAC bitrate
-            # sample_rate is typically preserved by transcoder
+            # Lossless → ALAC is always resampled to 44100 Hz for iPod compat.
+            # Zero out sample_count too: it was calculated from the source FLAC's
+            # sample rate (e.g. 96kHz) and is now meaningless against the 44100 Hz
+            # output.  The iPod can use sample_count even with gapless_track_flag=0
+            # for duration tracking; a mismatch makes it freeze and corrupt the
+            # track-2 buffer handoff.
+            if is_lossless_source:
+                sample_rate = 44100
+                sample_count = 0
+                pregap = 0
+                postgap = 0
+                gapless_track_flag = 0
 
         # ── Media type auto-detection ────────────────────────────────
         is_video = getattr(pc_track, "is_video", False)
@@ -1706,8 +1728,12 @@ class SyncExecutor:
         postgap = getattr(pc_track, "postgap", 0) or 0
         sample_count = getattr(pc_track, "sample_count", 0) or 0
         gapless_data = getattr(pc_track, "gapless_data", 0) or 0
-        # Auto-set gapless_track_flag when we have meaningful gapless data
-        gapless_track_flag = 1 if (pregap or postgap or sample_count) else 0
+        # Auto-set gapless_track_flag only when we have actual encoder
+        # delay/padding from a LAME header.  sample_count alone is an
+        # approximation and not reliable enough — enabling gapless mode
+        # without accurate pregap/postgap causes the iPod to misalign
+        # track boundaries, making every other track skip or play jittery.
+        gapless_track_flag = 1 if (pregap or postgap) else 0
         # encoder_flag: set to 1 for MP3 (iPod needs this for LAME gapless)
         encoder_flag = 1 if filetype == "mp3" else 0
         # VBR detection from mutagen bitrate_mode

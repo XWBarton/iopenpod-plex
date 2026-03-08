@@ -436,6 +436,10 @@ class DeviceInfoCard(QFrame):
         """Clear all info (when no device selected)."""
         self.name_label.setText("No Device")
         self.model_label.setText("Select a device to begin")
+        from PyQt6.QtGui import QPixmap
+        self.icon_label.setPixmap(QPixmap())  # clear any photo
+        self.icon_label.setText("♪")
+        self.icon_label.setFont(QFont(FONT_FAMILY, 24))
         self.tracks_stat.setValue("—")
         self.albums_stat.setValue("—")
         self.size_stat.setValue("—")
@@ -469,10 +473,11 @@ class Sidebar(QFrame):
     def __init__(self):
         from ..app import category_glyphs
         super().__init__()
+        self._user_hidden: set[str] = set()
         self.setStyleSheet(f"""
             QFrame#sidebar {{
                 background-color: {Colors.SURFACE};
-                border: 1px solid {Colors.BORDER};
+                border: 1px solid {Colors.BORDER_SUBTLE};
                 border-radius: {Metrics.BORDER_RADIUS_LG}px;
             }}
         """)
@@ -480,7 +485,7 @@ class Sidebar(QFrame):
 
         self.sidebarLayout = QVBoxLayout(self)
         self.sidebarLayout.setContentsMargins(10, 12, 10, 12)
-        self.sidebarLayout.setSpacing(8)
+        self.sidebarLayout.setSpacing(6)
         self.setFixedWidth(Metrics.SIDEBAR_WIDTH)
 
         # Device info card at top
@@ -488,83 +493,120 @@ class Sidebar(QFrame):
         self.device_card.device_renamed.connect(self.device_renamed)
         self.sidebarLayout.addWidget(self.device_card)
 
-        # Device select buttons - row 1
+        # ── Device action buttons ──────────────────────────────────
         self.deviceSelectLayout = QHBoxLayout()
-        self.deviceSelectLayout.setContentsMargins(0, 0, 0, 0)
-        self.deviceSelectLayout.setSpacing(6)
+        self.deviceSelectLayout.setContentsMargins(0, 2, 0, 0)
+        self.deviceSelectLayout.setSpacing(4)
 
-        self.deviceButton = QPushButton("⊞ Select")
-        self.rescanButton = QPushButton("↺ Rescan")
-
-        button_style = btn_css(
+        _action_btn_style = btn_css(
             bg=Colors.SURFACE_RAISED,
             bg_hover=Colors.SURFACE_ACTIVE,
             bg_press=Colors.SURFACE_ALT,
-            padding="7px 0",
+            padding="6px 0",
+            radius=Metrics.BORDER_RADIUS_SM,
         )
-        self.deviceButton.setStyleSheet(button_style)
-        self.rescanButton.setStyleSheet(button_style)
-        self.deviceButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
-        self.rescanButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
+
+        self.deviceButton = QPushButton("⊞ Select")
+        self.rescanButton = QPushButton("↺ Rescan")
+        self.deviceButton.setStyleSheet(_action_btn_style)
+        self.rescanButton.setStyleSheet(_action_btn_style)
+        self.deviceButton.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.DemiBold))
+        self.rescanButton.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.DemiBold))
+
+        self.ejectButton = QPushButton("⏏ Eject")
+        self.ejectButton.setStyleSheet(btn_css(
+            bg=Colors.SURFACE_RAISED,
+            bg_hover="rgba(200,40,40,100)",
+            bg_press="rgba(160,20,20,140)",
+            fg=Colors.DANGER,
+            padding="6px 0",
+            radius=Metrics.BORDER_RADIUS_SM,
+        ))
+        self.ejectButton.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.DemiBold))
 
         self.deviceSelectLayout.addWidget(self.deviceButton)
         self.deviceSelectLayout.addWidget(self.rescanButton)
-
+        self.deviceSelectLayout.addWidget(self.ejectButton)
         self.sidebarLayout.addLayout(self.deviceSelectLayout)
 
-        # Sync button - row 2 (full width)
+        # ── Sync button (hero action) ──────────────────────────────
         self.syncButton = QPushButton("⇄  Sync with PC")
         self.syncButton.setStyleSheet(accent_btn_css())
         self.syncButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
         self.sidebarLayout.addWidget(self.syncButton)
 
-        # Plex + Manage row
-        plex_manage_row = QHBoxLayout()
-        plex_manage_row.setContentsMargins(0, 0, 0, 0)
-        plex_manage_row.setSpacing(6)
+        # ── Thin separator ─────────────────────────────────────────
+        sep1 = QFrame()
+        sep1.setFixedHeight(1)
+        sep1.setStyleSheet(f"background-color: {Colors.BORDER_SUBTLE};")
+        self.sidebarLayout.addWidget(sep1)
 
-        self.plexButton = QPushButton("⊕  Plex")
-        self.plexButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
-        self.plexButton.setStyleSheet(btn_css(
-            bg=Colors.SURFACE_RAISED,
-            bg_hover=Colors.SURFACE_ACTIVE,
-            bg_press=Colors.SURFACE,
-            padding="8px 0",
-        ))
-        plex_manage_row.addWidget(self.plexButton)
+        # ── Sources section ────────────────────────────────────────
+        sources_label = QLabel("SOURCES")
+        sources_label.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
+        sources_label.setStyleSheet(
+            f"color: {Colors.TEXT_TERTIARY}; background: transparent; padding-left: 4px;"
+        )
+        self.sidebarLayout.addWidget(sources_label)
 
-        self.manageButton = QPushButton("▤  Manage")
-        self.manageButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
-        self.manageButton.setStyleSheet(btn_css(
-            bg=Colors.SURFACE_RAISED,
-            bg_hover=Colors.SURFACE_ACTIVE,
-            bg_press=Colors.SURFACE,
-            padding="8px 0",
-        ))
-        plex_manage_row.addWidget(self.manageButton)
+        sources_row = QHBoxLayout()
+        sources_row.setContentsMargins(0, 0, 0, 0)
+        sources_row.setSpacing(4)
 
-        self.sidebarLayout.addLayout(plex_manage_row)
-
-        # Backup button
-        self.backupButton = QPushButton("⊟  Backups")
-        self.backupButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
-        self.backupButton.setStyleSheet(btn_css(
+        _src_style = btn_css(
             bg=Colors.SURFACE_ALT,
             bg_hover=Colors.SURFACE_ACTIVE,
             bg_press=Colors.SURFACE,
-            padding="8px 12px",
-            extra="text-align: left;",
-        ))
-        self.sidebarLayout.addWidget(self.backupButton)
+            padding="7px 0",
+            radius=Metrics.BORDER_RADIUS_SM,
+        )
 
-        # Separator
-        sep = QFrame()
-        sep.setFixedHeight(1)
-        sep.setStyleSheet(f"background-color: {Colors.BORDER_SUBTLE};")
-        self.sidebarLayout.addWidget(sep)
+        self.plexButton = QPushButton("⊕  Plex")
+        self.plexButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
+        self.plexButton.setStyleSheet(_src_style)
+        sources_row.addWidget(self.plexButton)
 
-        # Scrollable category list — allows the window to shrink vertically
-        # without the sidebar buttons forcing a tall minimum height.
+        self.pinepodsButton = QPushButton("⊕  Pods")
+        self.pinepodsButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
+        self.pinepodsButton.setStyleSheet(_src_style)
+        self.pinepodsButton.setToolTip("Pinepods")
+        sources_row.addWidget(self.pinepodsButton)
+
+        self.sidebarLayout.addLayout(sources_row)
+
+        # ── Tools row ─────────────────────────────────────────────
+        tools_row = QHBoxLayout()
+        tools_row.setContentsMargins(0, 0, 0, 0)
+        tools_row.setSpacing(4)
+
+        _tool_style = btn_css(
+            bg=Colors.SURFACE_ALT,
+            bg_hover=Colors.SURFACE_ACTIVE,
+            bg_press=Colors.SURFACE,
+            padding="7px 0",
+            radius=Metrics.BORDER_RADIUS_SM,
+        )
+
+        self.manageButton = QPushButton("▤  Manage")
+        self.manageButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
+        self.manageButton.setStyleSheet(_tool_style)
+        tools_row.addWidget(self.manageButton)
+
+        self.backupButton = QPushButton("⊟  Backups")
+        self.backupButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
+        self.backupButton.setStyleSheet(_tool_style)
+        tools_row.addWidget(self.backupButton)
+
+        self.sidebarLayout.addLayout(tools_row)
+
+        # ── Thin separator ─────────────────────────────────────────
+        sep2 = QFrame()
+        sep2.setFixedHeight(1)
+        sep2.setStyleSheet(f"background-color: {Colors.BORDER_SUBTLE};")
+        self.sidebarLayout.addWidget(sep2)
+
+        # ── Library section ────────────────────────────────────────
+        # Scrollable category list
         cat_scroll = QScrollArea()
         cat_scroll.setWidgetResizable(True)
         cat_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -584,8 +626,10 @@ class Sidebar(QFrame):
         cat_layout.setSpacing(2)
 
         lib_label = QLabel("LIBRARY")
-        lib_label.setFont(QFont(FONT_FAMILY, 9, QFont.Weight.Bold))
-        lib_label.setStyleSheet(f"color: {Colors.TEXT_TERTIARY}; background: transparent; padding-left: 4px;")
+        lib_label.setFont(QFont(FONT_FAMILY, 8, QFont.Weight.Bold))
+        lib_label.setStyleSheet(
+            f"color: {Colors.TEXT_TERTIARY}; background: transparent; padding-left: 4px;"
+        )
         cat_layout.addWidget(lib_label)
 
         self.buttons = {}
@@ -593,19 +637,9 @@ class Sidebar(QFrame):
         for category, glyph in category_glyphs.items():
             btn = QPushButton(f"{glyph}  {category}")
             btn.setFont(QFont(FONT_FAMILY, 11, QFont.Weight.DemiBold))
-
-            btn.setStyleSheet(btn_css(
-                bg=Colors.SURFACE_ALT,
-                bg_hover=Colors.SURFACE_ACTIVE,
-                bg_press=Colors.SURFACE,
-                radius=Metrics.BORDER_RADIUS_SM,
-                padding="9px 12px",
-                extra="text-align: left;",
-            ))
-
+            btn.setStyleSheet(self._cat_btn_normal_css())
             btn.clicked.connect(
                 lambda clicked, category=category: self.selectCategory(category))
-
             cat_layout.addWidget(btn)
             self.buttons[category] = btn
 
@@ -613,7 +647,7 @@ class Sidebar(QFrame):
         cat_scroll.setWidget(cat_container)
         self.sidebarLayout.addWidget(cat_scroll, stretch=1)
 
-        # Settings button at bottom
+        # ── Settings button at bottom ──────────────────────────────
         self.settingsButton = QPushButton("⚙  Settings")
         self.settingsButton.setFont(QFont(FONT_FAMILY, 10, QFont.Weight.DemiBold))
         self.settingsButton.setStyleSheet(btn_css(
@@ -622,12 +656,45 @@ class Sidebar(QFrame):
             bg_press=Colors.SURFACE,
             fg=Colors.TEXT_SECONDARY,
             padding="8px 12px",
+            radius=Metrics.BORDER_RADIUS_SM,
             extra="text-align: left;",
         ))
         self.sidebarLayout.addWidget(self.settingsButton)
 
         self.selectedCategory = list(category_glyphs.keys())[0]
         self.selectCategory(self.selectedCategory)
+
+    def _cat_btn_normal_css(self) -> str:
+        """Normal (unselected) category button style."""
+        return btn_css(
+            bg="transparent",
+            bg_hover=Colors.SURFACE_RAISED,
+            bg_press=Colors.SURFACE,
+            fg=Colors.TEXT_PRIMARY,
+            radius=Metrics.BORDER_RADIUS_SM,
+            padding="8px 12px",
+            extra="text-align: left;",
+        )
+
+    def _cat_btn_selected_css(self) -> str:
+        """Selected category button style — accent-tinted background with accent text."""
+        return f"""
+            QPushButton {{
+                background: {Colors.ACCENT_MUTED};
+                border: none;
+                border-radius: {Metrics.BORDER_RADIUS_SM}px;
+                color: {Colors.ACCENT};
+                padding: 8px 12px;
+                text-align: left;
+                font-weight: 700;
+            }}
+            QPushButton:hover {{
+                background: {Colors.ACCENT_DIM};
+            }}
+            QPushButton:pressed {{
+                background: {Colors.ACCENT_PRESS};
+            }}
+        """
 
     def updateDeviceInfo(self, name: str, model: str, tracks: int, albums: int,
                          size_bytes: int, duration_ms: int,
@@ -649,6 +716,23 @@ class Sidebar(QFrame):
         self.setPodcastVisible(True)
         self.setAudiobookVisible(True)
 
+    def apply_tab_visibility(self, hidden_tabs: list):
+        """Show/hide sidebar tabs based on user preferences in settings.
+
+        Device-capability filtering (setVideoVisible etc.) is applied on top.
+        """
+        self._user_hidden = set(hidden_tabs)
+        for cat, btn in self.buttons.items():
+            if cat in self._user_hidden:
+                btn.setVisible(False)
+            else:
+                btn.setVisible(True)
+        if self.selectedCategory in self._user_hidden:
+            for cat in self.buttons:
+                if cat not in self._user_hidden:
+                    self.selectCategory(cat)
+                    break
+
     def setVideoVisible(self, visible: bool):
         """Show or hide video-related sidebar categories.
 
@@ -659,7 +743,7 @@ class Sidebar(QFrame):
         for cat in self._VIDEO_CATEGORIES:
             btn = self.buttons.get(cat)
             if btn:
-                btn.setVisible(visible)
+                btn.setVisible(visible and cat not in self._user_hidden)
         # If the selected category is being hidden, switch to a safe default
         if not visible and self.selectedCategory in self._VIDEO_CATEGORIES:
             self.selectCategory("Albums")
@@ -673,7 +757,7 @@ class Sidebar(QFrame):
         for cat in self._PODCAST_CATEGORIES:
             btn = self.buttons.get(cat)
             if btn:
-                btn.setVisible(visible)
+                btn.setVisible(visible and cat not in self._user_hidden)
         if not visible and self.selectedCategory in self._PODCAST_CATEGORIES:
             self.selectCategory("Albums")
 
@@ -686,7 +770,7 @@ class Sidebar(QFrame):
         for cat in self._AUDIOBOOK_CATEGORIES:
             btn = self.buttons.get(cat)
             if btn:
-                btn.setVisible(visible)
+                btn.setVisible(visible and cat not in self._user_hidden)
         if not visible and self.selectedCategory in self._AUDIOBOOK_CATEGORIES:
             self.selectCategory("Albums")
 
@@ -696,23 +780,9 @@ class Sidebar(QFrame):
 
     def selectCategory(self, category):
         # Reset the previous selected button's style
-        self.buttons[self.selectedCategory].setStyleSheet(btn_css(
-            bg=Colors.SURFACE_ALT,
-            bg_hover=Colors.SURFACE_ACTIVE,
-            bg_press=Colors.SURFACE,
-            radius=Metrics.BORDER_RADIUS_SM,
-            padding="9px 12px",
-            extra="text-align: left;",
-        ))
+        self.buttons[self.selectedCategory].setStyleSheet(self._cat_btn_normal_css())
 
         self.selectedCategory = category
-        # set the selected button's style
-        self.buttons[self.selectedCategory].setStyleSheet(btn_css(
-            bg=Colors.ACCENT,
-            bg_hover="rgba(64,156,255,200)",
-            bg_press="rgba(64,156,255,160)",
-            radius=Metrics.BORDER_RADIUS_SM,
-            padding="9px 12px",
-            extra="text-align: left;",
-        ))
+        # Set the selected button's style
+        self.buttons[self.selectedCategory].setStyleSheet(self._cat_btn_selected_css())
         self.category_changed.emit(category)

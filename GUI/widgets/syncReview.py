@@ -1299,10 +1299,10 @@ class SyncReviewWidget(QWidget):
             self.cancel_btn.setText("Done")
             self.cancel_btn.setEnabled(True)
 
-    def show_loading(self):
+    def show_loading(self, message: str = "Scanning library..."):
         """Show loading state."""
         self.stack.setCurrentIndex(0)
-        self.loading_label.setText("Scanning library...")
+        self.loading_label.setText(message)
         self.progress_bar.setRange(0, 0)  # Indeterminate
         self.eta_label.setText("")
         self._eta_tracker.start()
