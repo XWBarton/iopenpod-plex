@@ -80,7 +80,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name="iOpenPod.app",
-    icon=None,          # replace with "packaging/iOpenPod.icns" once you have one
+    icon=str(ROOT / "packaging" / "iOpenPod.icns"),
     bundle_identifier="com.xwbarton.iopenpod",
     info_plist={
         "NSHighResolutionCapable": True,
