@@ -373,6 +373,7 @@ class _LoginPage(QWidget):
         self._pin_login = None
         self._poll_worker: Optional[_PinPollWorker] = None
         self._server_worker: Optional[_ServerFetchWorker] = None
+        self._active_workers: set = set()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(32, 32, 32, 32)
@@ -565,6 +566,13 @@ class _LoginPage(QWidget):
 
         self._login_url: str = ""
 
+    def _run_worker(self, worker: QThread) -> QThread:
+        """Keep a strong Python reference to *worker* until Qt says it finished."""
+        self._active_workers.add(worker)
+        worker.finished.connect(lambda: self._active_workers.discard(worker))
+        worker.start()
+        return worker
+
     # ── PIN flow ──────────────────────────────────────────────────────
 
     def _start_pin_login(self):
@@ -595,7 +603,7 @@ class _LoginPage(QWidget):
         self._poll_worker = _PinPollWorker(self._pin_login)
         self._poll_worker.succeeded.connect(self._on_pin_succeeded)
         self._poll_worker.failed.connect(self._on_pin_failed)
-        self._poll_worker.start()
+        self._run_worker(self._poll_worker)
 
     def _open_browser(self):
         if self._login_url:
@@ -636,7 +644,7 @@ class _LoginPage(QWidget):
         self._server_worker = _ServerFetchWorker(token)
         self._server_worker.finished.connect(self._on_servers_loaded)
         self._server_worker.error.connect(self._on_server_error)
-        self._server_worker.start()
+        self._run_worker(self._server_worker)
 
     def _on_servers_loaded(self, servers: list):
         self._servers = servers
@@ -702,7 +710,7 @@ class _LoginPage(QWidget):
         self._connect_worker = _ConnectWorker(token, server_info)
         self._connect_worker.done.connect(self._on_server_connected)
         self._connect_worker.err.connect(self._on_connect_error)
-        self._connect_worker.start()
+        self._run_worker(self._connect_worker)
 
     def _on_server_connected(self, url: str, name: str, client_id: str):
         try:
@@ -758,7 +766,7 @@ class _LoginPage(QWidget):
         self._manual_worker.err.connect(
             lambda e: self._show_error(f"Connection failed: {e}")
         )
-        self._manual_worker.start()
+        self._run_worker(self._manual_worker)
 
     def _finish_manual(self, url: str, token: str, name: str):
         try:
@@ -800,6 +808,9 @@ class _BrowserPage(QWidget):
         self._current_section_key: str = ""
         self._load_worker: Optional[_AlbumLoadWorker] = None
         self._section_worker: Optional[_SectionLoadWorker] = None
+        # Keep strong Python references to running workers so Qt never tries to
+        # destroy a QThread that is still alive (which causes SIGABRT).
+        self._active_workers: set = set()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 12, 16, 16)
@@ -1015,6 +1026,18 @@ class _BrowserPage(QWidget):
 
     # ── Public interface ──────────────────────────────────────────────
 
+    def _run_worker(self, worker: QThread) -> QThread:
+        """Start *worker* and keep a strong Python reference until it finishes.
+
+        Without this, reassigning self._load_worker / self._section_worker drops
+        the last Python reference to the old thread while Qt still considers it
+        alive, causing QThread::~QThread() to call fatal() → SIGABRT.
+        """
+        self._active_workers.add(worker)
+        worker.finished.connect(lambda: self._active_workers.discard(worker))
+        worker.start()
+        return worker
+
     def load_server(self, base_url: str, token: str, server_name: str,
                     client_id: str = ""):
         self._base_url = base_url
@@ -1059,7 +1082,7 @@ class _BrowserPage(QWidget):
         )
         self._section_worker.finished.connect(self._on_sections_loaded)
         self._section_worker.error.connect(self._on_sections_error)
-        self._section_worker.start()
+        self._run_worker(self._section_worker)
 
     def _on_sections_loaded(self, sections: list):
         self._sections = sections
@@ -1143,7 +1166,7 @@ class _BrowserPage(QWidget):
         )
         self._load_worker.finished.connect(self._on_albums_loaded)
         self._load_worker.error.connect(self._on_load_error)
-        self._load_worker.start()
+        self._run_worker(self._load_worker)
 
     def _on_albums_loaded(self, albums: list):
         self._albums = albums
@@ -1273,7 +1296,7 @@ class _BrowserPage(QWidget):
             self._base_url, self._token, album["rating_key"], self._client_id
         )
         self._track_fetcher.done.connect(self._populate_tracks)
-        self._track_fetcher.start()
+        self._run_worker(self._track_fetcher)
 
     def _populate_tracks(self, tracks: list):
         self._track_list.clear()
