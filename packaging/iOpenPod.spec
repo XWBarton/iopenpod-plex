@@ -90,7 +90,7 @@ app = BUNDLE(
     info_plist={
         "NSHighResolutionCapable": True,
         "NSRequiresAquaSystemAppearance": False,
-        "CFBundleShortVersionString": "1.1.0",
+        "CFBundleShortVersionString": "1.1.1",
         "CFBundleName": "iOpenPod",
         "CFBundleDisplayName": "iOpenPod",
         "LSMinimumSystemVersion": "12.0",
