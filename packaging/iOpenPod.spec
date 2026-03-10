@@ -89,8 +89,8 @@ app = BUNDLE(
     bundle_identifier="com.xwbarton.iopenpod",
     info_plist={
         "NSHighResolutionCapable": True,
-        "NSRequiresAquaSystemAppearance": False,   # allows dark mode
-        "CFBundleShortVersionString": "1.0.0",
+        "NSRequiresAquaSystemAppearance": False,
+        "CFBundleShortVersionString": "1.1.0",
         "CFBundleName": "iOpenPod",
         "CFBundleDisplayName": "iOpenPod",
         "LSMinimumSystemVersion": "12.0",

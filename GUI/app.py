@@ -1506,15 +1506,16 @@ class MainWindow(QMainWindow):
 
     def startPlexSync(self):
         """Open the Plex browser, let user pick an album, then sync it to iPod."""
-        device = DeviceManager.get_instance()
-        if not device.device_path:
-            QMessageBox.warning(self, "No Device", "Please select an iPod device first.")
-            return
-
         from GUI.widgets.plexBrowser import PlexBrowserDialog, PlexSyncWorker
 
         dlg = PlexBrowserDialog(self)
         if dlg.exec() != dlg.DialogCode.Accepted:
+            return
+
+        # A device must be connected before we can actually sync
+        device = DeviceManager.get_instance()
+        if not device.device_path:
+            QMessageBox.warning(self, "No Device", "Please connect an iPod before syncing.")
             return
 
         # Show sync loading view
@@ -1545,6 +1546,8 @@ class MainWindow(QMainWindow):
             ipod_path=device.device_path or "",
             supports_video=supports_video,
             supports_podcast=supports_podcast,
+            force_audiobook=dlg.selected_force_audiobook,
+            client_id=dlg.selected_client_id,
         )
         self._plex_sync_worker.progress.connect(self.syncReview.update_progress)
         self._plex_sync_worker.finished.connect(self._onPlexDiffComplete)

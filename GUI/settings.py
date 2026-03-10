@@ -147,6 +147,12 @@ class AppSettings:
     # Plex auth token (obtained via PIN login flow). Empty = not logged in.
     plex_token: str = ""
 
+    # Plex server client identifier (used to re-discover connections via account).
+    plex_client_id: str = ""
+
+    # Plex library section key (e.g. "1"). Empty = use first music section.
+    plex_section_key: str = ""
+
     # ── Pinepods ─────────────────────────────────────────────────────────────
     # Pinepods server base URL (e.g. http://192.168.1.10:8040).
     pinepods_url: str = ""

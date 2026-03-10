@@ -37,7 +37,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QListWidget, QListWidgetItem, QStackedWidget,
     QFrame, QProgressBar, QSplitter, QWidget, QMessageBox,
-    QScrollArea, QSizePolicy, QComboBox,
+    QScrollArea, QSizePolicy, QComboBox, QCheckBox,
 )
 
 from ..styles import Colors, FONT_FAMILY, Metrics, btn_css, accent_btn_css
@@ -144,23 +144,47 @@ class _ServerFetchWorker(QThread):
 
 # ── Album Load Worker ─────────────────────────────────────────────────────────
 
+class _SectionLoadWorker(QThread):
+    """Fetches available audio library sections from a connected Plex server."""
+
+    finished = pyqtSignal(list)   # list of section dicts
+    error = pyqtSignal(str)
+
+    def __init__(self, base_url: str, token: str, client_id: str = "", parent=None):
+        super().__init__(parent)
+        self._url = base_url
+        self._token = token
+        self._client_id = client_id
+
+    def run(self):
+        try:
+            from SyncEngine.plex_library import connect_reliable, get_audio_sections
+            server, _ = connect_reliable(self._token, self._url, self._client_id)
+            self.finished.emit(get_audio_sections(server))
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 class _AlbumLoadWorker(QThread):
     """Loads albums from a connected Plex server in the background."""
 
     finished = pyqtSignal(list)   # list of album dicts
     error = pyqtSignal(str)
 
-    def __init__(self, base_url: str, token: str, query: str = "", parent=None):
+    def __init__(self, base_url: str, token: str, query: str = "",
+                 section_key: str = "", client_id: str = "", parent=None):
         super().__init__(parent)
         self._url = base_url
         self._token = token
         self._query = query
+        self._section_key = section_key
+        self._client_id = client_id
 
     def run(self):
         try:
-            from SyncEngine.plex_library import connect, search_albums
-            server = connect(self._url, self._token)
-            albums = search_albums(server, self._query)
+            from SyncEngine.plex_library import connect_reliable, search_albums
+            server, _ = connect_reliable(self._token, self._url, self._client_id)
+            albums = search_albums(server, self._query, section_key=self._section_key)
             result = []
             for a in albums:
                 result.append({
@@ -199,11 +223,14 @@ class PlexSyncWorker(QThread):
         ipod_path: str,
         supports_video: bool = False,
         supports_podcast: bool = True,
+        force_audiobook: bool = False,
+        client_id: str = "",
         parent=None,
     ):
         super().__init__(parent)
         self._url = base_url
         self._token = token
+        self._client_id = client_id
         # Normalise to list
         self._album_keys = (
             album_rating_key if isinstance(album_rating_key, list)
@@ -213,11 +240,12 @@ class PlexSyncWorker(QThread):
         self._ipod_path = ipod_path
         self._supports_video = supports_video
         self._supports_podcast = supports_podcast
+        self._force_audiobook = force_audiobook
         self._temp_dir: str = ""
 
     def run(self):
         try:
-            from SyncEngine.plex_library import connect, PLEXAPI_AVAILABLE
+            from SyncEngine.plex_library import connect_reliable, PLEXAPI_AVAILABLE
             from SyncEngine.pc_library import PCLibrary
             from SyncEngine.fingerprint_diff_engine import FingerprintDiffEngine
 
@@ -230,7 +258,7 @@ class PlexSyncWorker(QThread):
 
             # ── 1. Connect ───────────────────────────────────────────
             self.progress.emit("plex_connect", 0, 0, "Connecting to Plex…")
-            server = connect(self._url, self._token)
+            server, _ = connect_reliable(self._token, self._url, self._client_id)
 
             # ── 2. Create temp dir and download all albums ───────────
             self._temp_dir = tempfile.mkdtemp(prefix="iopenpod_plex_")
@@ -269,6 +297,7 @@ class PlexSyncWorker(QThread):
                     server, album, self._temp_dir,
                     progress_callback=_dl_progress,
                     is_cancelled=self.isInterruptionRequested,
+                    force_audiobook=self._force_audiobook,
                 )
                 all_downloaded.extend(downloaded)
 
@@ -639,7 +668,7 @@ class _LoginPage(QWidget):
         token = self._token
 
         class _ConnectWorker(QThread):
-            done = pyqtSignal(str, str)     # (url, name)
+            done = pyqtSignal(str, str, str)    # (url, name, client_id)
             err = pyqtSignal(str)
 
             def __init__(self, token, server_info):
@@ -648,24 +677,40 @@ class _LoginPage(QWidget):
                 self._info = server_info
 
             def run(self):
+                client_id = self._info.get("clientIdentifier", "")
                 try:
                     from SyncEngine.plex_library import connect_best
                     _, url = connect_best(self._token, self._info)
-                    self.done.emit(url, self._info["name"])
+                    self.done.emit(url, self._info["name"], client_id)
+                    return
+                except Exception:
+                    pass  # fall through to relay
+
+                # Direct connections all failed — try relay via account
+                try:
+                    from SyncEngine.plex_library import connect_via_account
+                    server, url = connect_via_account(self._token, client_id)
+                    self.done.emit(url, self._info["name"], client_id)
                 except Exception as e:
-                    self.err.emit(str(e))
+                    # Emit a clean one-line error, not the full URL dump
+                    self.err.emit(
+                        f"Could not connect to '{self._info['name']}'.\n"
+                        "Direct connections timed out and relay also failed.\n"
+                        f"Detail: {e}"
+                    )
 
         self._connect_worker = _ConnectWorker(token, server_info)
         self._connect_worker.done.connect(self._on_server_connected)
         self._connect_worker.err.connect(self._on_connect_error)
         self._connect_worker.start()
 
-    def _on_server_connected(self, url: str, name: str):
+    def _on_server_connected(self, url: str, name: str, client_id: str):
         try:
             from ..settings import get_settings
             s = get_settings()
             s.plex_url = url
             s.plex_token = self._token
+            s.plex_client_id = client_id
             s.save()
         except Exception:
             pass
@@ -673,7 +718,10 @@ class _LoginPage(QWidget):
 
     def _on_connect_error(self, message: str):
         self._connect_server_btn.setEnabled(True)
-        self._server_status.setText(f"Connection failed: {message}")
+        # Show only the first line of the error — suppress the full URL dump
+        first_line = message.splitlines()[0] if message else "Unknown error"
+        self._server_status.setStyleSheet(f"color: #ff6b6b; background: transparent; border: none;")
+        self._server_status.setText(first_line)
 
     # ── Manual URL ────────────────────────────────────────────────────
 
@@ -739,15 +787,19 @@ class _BrowserPage(QWidget):
     """Browse albums on a connected Plex server and pick albums to sync."""
 
     # Emitted when user clicks "Add to iPod" — list of rating keys
-    album_selected = pyqtSignal(str, str, list, str)  # (url, token, rating_keys, label)
+    album_selected = pyqtSignal(str, str, list, str, bool)  # (url, token, rating_keys, label, force_audiobook)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._base_url: str = ""
         self._token: str = ""
+        self._client_id: str = ""
         self._server_name: str = ""
         self._albums: list[dict] = []
+        self._sections: list[dict] = []
+        self._current_section_key: str = ""
         self._load_worker: Optional[_AlbumLoadWorker] = None
+        self._section_worker: Optional[_SectionLoadWorker] = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 12, 16, 16)
@@ -768,6 +820,49 @@ class _BrowserPage(QWidget):
         self._disconnect_btn.clicked.connect(self._on_disconnect)
         header.addWidget(self._disconnect_btn)
         root.addLayout(header)
+
+        # ── Library selector ──────────────────────────────────────────
+        library_row = QHBoxLayout()
+        library_row.setSpacing(6)
+        library_row.addWidget(_label("Library:", 10, color=Colors.TEXT_SECONDARY))
+
+        _combo_css = f"""
+            QComboBox {{
+                background: {Colors.SURFACE};
+                border: 1px solid {Colors.BORDER};
+                border-radius: {Metrics.BORDER_RADIUS}px;
+                color: {Colors.TEXT_PRIMARY};
+                padding: 5px 10px;
+                min-width: 160px;
+            }}
+            QComboBox:focus {{ border-color: {Colors.ACCENT}; }}
+            QComboBox::drop-down {{ border: none; width: 20px; }}
+            QComboBox QAbstractItemView {{
+                background: {Colors.SURFACE};
+                color: {Colors.TEXT_PRIMARY};
+                border: 1px solid {Colors.BORDER};
+                selection-background-color: {Colors.ACCENT};
+            }}
+        """
+        self._library_combo = QComboBox()
+        self._library_combo.setFont(QFont(FONT_FAMILY, 10))
+        self._library_combo.setStyleSheet(_combo_css)
+        self._library_combo.addItem("Loading libraries…")
+        self._library_combo.setEnabled(False)
+        self._library_combo.currentIndexChanged.connect(self._on_library_changed)
+        library_row.addWidget(self._library_combo)
+
+        self._audiobook_check = QCheckBox("Add as Audiobook")
+        self._audiobook_check.setFont(QFont(FONT_FAMILY, 10))
+        self._audiobook_check.setStyleSheet(f"""
+            QCheckBox {{ color: {Colors.TEXT_SECONDARY}; background: transparent; spacing: 5px; }}
+            QCheckBox::indicator {{ width: 14px; height: 14px; border-radius: 3px;
+                border: 1px solid {Colors.BORDER}; background: {Colors.SURFACE}; }}
+            QCheckBox::indicator:checked {{ background: {Colors.ACCENT}; border-color: {Colors.ACCENT}; }}
+        """)
+        library_row.addWidget(self._audiobook_check)
+        library_row.addStretch()
+        root.addLayout(library_row)
 
         # ── Search + Sort ─────────────────────────────────────────────
         search_row = QHBoxLayout()
@@ -920,13 +1015,15 @@ class _BrowserPage(QWidget):
 
     # ── Public interface ──────────────────────────────────────────────
 
-    def load_server(self, base_url: str, token: str, server_name: str):
+    def load_server(self, base_url: str, token: str, server_name: str,
+                    client_id: str = ""):
         self._base_url = base_url
         self._token = token
+        self._client_id = client_id
         self._server_name = server_name
         self._server_label.setText(f"Connected to {server_name}")
         self._add_btn.setEnabled(False)
-        self._load_albums()
+        self._load_sections()
 
     def disconnect_requested(self):
         """Signal emitted when user clicks Disconnect."""
@@ -948,6 +1045,84 @@ class _BrowserPage(QWidget):
         if isinstance(dlg, PlexBrowserDialog):
             dlg._go_to_login()
 
+    def _load_sections(self):
+        """Fetch available library sections from Plex and populate the dropdown."""
+        self._library_combo.setEnabled(False)
+        self._library_combo.clear()
+        self._library_combo.addItem("Loading libraries…")
+
+        if self._section_worker and self._section_worker.isRunning():
+            self._section_worker.requestInterruption()
+
+        self._section_worker = _SectionLoadWorker(
+            self._base_url, self._token, self._client_id
+        )
+        self._section_worker.finished.connect(self._on_sections_loaded)
+        self._section_worker.error.connect(self._on_sections_error)
+        self._section_worker.start()
+
+    def _on_sections_loaded(self, sections: list):
+        self._sections = sections
+        self._library_combo.blockSignals(True)
+        self._library_combo.clear()
+
+        # Restore last-used section from settings
+        saved_key = ""
+        try:
+            from ..settings import get_settings
+            saved_key = get_settings().plex_section_key
+        except Exception:
+            pass
+
+        selected_idx = 0
+        for i, s in enumerate(sections):
+            self._library_combo.addItem(s["title"], userData=s["key"])
+            if s["key"] == saved_key:
+                selected_idx = i
+
+        self._library_combo.blockSignals(False)
+        self._library_combo.setEnabled(len(sections) > 0)
+
+        if sections:
+            self._library_combo.setCurrentIndex(selected_idx)
+            self._current_section_key = sections[selected_idx]["key"]
+            # Auto-check audiobook flag for the initially selected section
+            if "audiobook" in sections[selected_idx]["title"].lower():
+                self._audiobook_check.setChecked(True)
+        else:
+            self._library_combo.addItem("No libraries found")
+            self._current_section_key = ""
+
+        self._load_albums()
+
+    def _on_sections_error(self, message: str):
+        self._library_combo.clear()
+        self._library_combo.addItem("Could not load libraries")
+        self._library_combo.setEnabled(False)
+        # Fall back to default section
+        self._load_albums()
+
+    def _on_library_changed(self, index: int):
+        if index < 0 or index >= len(self._sections):
+            return
+        key = self._sections[index]["key"]
+        title = self._sections[index]["title"]
+        if key == self._current_section_key:
+            return
+        self._current_section_key = key
+        # Auto-check "Add as Audiobook" when the library name suggests audiobooks
+        if "audiobook" in title.lower():
+            self._audiobook_check.setChecked(True)
+        # Persist selection
+        try:
+            from ..settings import get_settings
+            s = get_settings()
+            s.plex_section_key = key
+            s.save()
+        except Exception:
+            pass
+        self._load_albums()
+
     def _load_albums(self, query: str = ""):
         """Fetch all albums from Plex (ignoring query — filtering is done client-side)."""
         self._album_list.clear()
@@ -961,7 +1136,11 @@ class _BrowserPage(QWidget):
             self._load_worker.requestInterruption()
 
         # Always fetch all albums; client-side fuzzy filter handles the rest
-        self._load_worker = _AlbumLoadWorker(self._base_url, self._token, "")
+        self._load_worker = _AlbumLoadWorker(
+            self._base_url, self._token, "",
+            section_key=self._current_section_key,
+            client_id=self._client_id,
+        )
         self._load_worker.finished.connect(self._on_albums_loaded)
         self._load_worker.error.connect(self._on_load_error)
         self._load_worker.start()
@@ -1057,16 +1236,17 @@ class _BrowserPage(QWidget):
             done = pyqtSignal(list)
             err = pyqtSignal(str)
 
-            def __init__(self, url, token, rating_key):
+            def __init__(self, url, token, rating_key, client_id=""):
                 super().__init__()
                 self._url = url
                 self._token = token
                 self._key = rating_key
+                self._client_id = client_id
 
             def run(self):
                 try:
-                    from SyncEngine.plex_library import connect
-                    server = connect(self._url, self._token)
+                    from SyncEngine.plex_library import connect_reliable
+                    server, _ = connect_reliable(self._token, self._url, self._client_id)
                     album_obj = server.fetchItem(self._key)
                     tracks = album_obj.tracks()
                     result = []
@@ -1090,7 +1270,7 @@ class _BrowserPage(QWidget):
                     self.err.emit(str(e))
 
         self._track_fetcher = _TrackFetcher(
-            self._base_url, self._token, album["rating_key"]
+            self._base_url, self._token, album["rating_key"], self._client_id
         )
         self._track_fetcher.done.connect(self._populate_tracks)
         self._track_fetcher.start()
@@ -1116,7 +1296,10 @@ class _BrowserPage(QWidget):
             label = f"{a['artist']} — {a['title']}"
         else:
             label = f"{len(selected)} albums"
-        self.album_selected.emit(self._base_url, self._token, keys, label)
+        self.album_selected.emit(
+            self._base_url, self._token, keys, label,
+            self._audiobook_check.isChecked(),
+        )
 
 
 # ── Main Dialog ───────────────────────────────────────────────────────────────
@@ -1141,8 +1324,10 @@ class PlexBrowserDialog(QDialog):
 
         self.selected_url: str = ""
         self.selected_token: str = ""
+        self.selected_client_id: str = ""
         self.selected_album_keys: list[int] = []
         self.selected_album_label: str = ""
+        self.selected_force_audiobook: bool = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1170,7 +1355,10 @@ class PlexBrowserDialog(QDialog):
             s = get_settings()
             if s.plex_url and s.plex_token:
                 self._stack.setCurrentIndex(1)
-                self._browser_page.load_server(s.plex_url, s.plex_token, s.plex_url)
+                self._browser_page.load_server(
+                    s.plex_url, s.plex_token, s.plex_url,
+                    client_id=s.plex_client_id,
+                )
                 return
         except Exception:
             pass
@@ -1178,14 +1366,26 @@ class PlexBrowserDialog(QDialog):
 
     def _on_connected(self, url: str, token: str, name: str):
         self._stack.setCurrentIndex(1)
-        self._browser_page.load_server(url, token, name)
+        try:
+            from ..settings import get_settings
+            client_id = get_settings().plex_client_id
+        except Exception:
+            client_id = ""
+        self._browser_page.load_server(url, token, name, client_id=client_id)
 
     def _go_to_login(self):
         self._stack.setCurrentIndex(0)
 
-    def _on_album_selected(self, url: str, token: str, rating_keys: list, label: str):
+    def _on_album_selected(self, url: str, token: str, rating_keys: list, label: str,
+                           force_audiobook: bool):
         self.selected_url = url
         self.selected_token = token
         self.selected_album_keys = rating_keys
         self.selected_album_label = label
+        self.selected_force_audiobook = force_audiobook
+        try:
+            from ..settings import get_settings
+            self.selected_client_id = get_settings().plex_client_id
+        except Exception:
+            self.selected_client_id = ""
         self.accept()

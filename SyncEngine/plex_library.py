@@ -75,23 +75,37 @@ def get_servers_for_token(token: str) -> list[dict]:
     return servers
 
 
-def connect_best(token: str, server_info: dict, timeout: int = 10):
-    """Try each connection URL for a server and return the first that works.
+def connect_best(token: str, server_info: dict, timeout: int = 5):
+    """Try all connection URLs for a server **in parallel** and return the first that works.
 
+    Uses a short per-connection timeout so unreachable local IPs fail fast.
     Raises ConnectionError if all connections fail.
     """
     _require_plexapi()
     from plexapi.server import PlexServer
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    errors = []
-    for url in server_info.get("connections", []):
-        try:
-            server = PlexServer(url, token, timeout=timeout)
-            # Quick sanity check
-            _ = server.friendlyName
-            return server, url
-        except Exception as e:
-            errors.append(f"{url}: {e}")
+    urls = server_info.get("connections", [])
+    if not urls:
+        raise ConnectionError(
+            f"No connection URLs for '{server_info.get('name', 'server')}'."
+        )
+
+    errors: list[str] = []
+
+    def _try(url: str):
+        server = PlexServer(url, token, timeout=timeout)
+        _ = server.friendlyName   # sanity-check: raises if auth fails
+        return server, url
+
+    with ThreadPoolExecutor(max_workers=len(urls)) as pool:
+        futures = {pool.submit(_try, url): url for url in urls}
+        for future in as_completed(futures):
+            url = futures[future]
+            exc = future.exception()
+            if exc is None:
+                return future.result()
+            errors.append(f"{url}: {exc}")
 
     raise ConnectionError(
         f"Could not connect to '{server_info.get('name', 'server')}'.\n"
@@ -99,7 +113,86 @@ def connect_best(token: str, server_info: dict, timeout: int = 10):
     )
 
 
+def connect_via_account(token: str, client_id: str, timeout: int = 30):
+    """Connect using plexapi's native resource.connect(), which handles relay properly.
+
+    Direct PlexServer() calls don't add the special headers that Plex relay
+    requires.  resource.connect() is plexapi's own implementation and correctly
+    negotiates both direct and relay connections.
+    """
+    _require_plexapi()
+    from plexapi.myplex import MyPlexAccount
+
+    account = MyPlexAccount(token=token)
+    resource = next(
+        (r for r in account.resources()
+         if r.clientIdentifier == client_id and "server" in r.provides),
+        None,
+    )
+    if resource is None:
+        raise ConnectionError(
+            f"Server with clientIdentifier '{client_id}' not found on this account."
+        )
+    server = resource.connect(timeout=timeout)
+    return server, server._baseurl  # type: ignore[attr-defined]
+
+
+def connect_reliable(token: str, base_url: str, client_id: str = "",
+                     timeout: int = 5):
+    """Connect to a Plex server with automatic relay fallback.
+
+    1. Fast path: try the stored *base_url* directly (works on the same LAN).
+    2. If that fails and *client_id* is set, use plexapi's resource.connect()
+       which negotiates relay properly — this is what makes remote access work
+       even without port forwarding.
+
+    Returns (PlexServer, working_url).
+    Raises ConnectionError if all attempts fail.
+    """
+    _require_plexapi()
+    from plexapi.server import PlexServer
+
+    # Fast path — same network, stored URL still valid
+    try:
+        server = PlexServer(base_url, token, timeout=timeout)
+        _ = server.friendlyName
+        return server, base_url
+    except Exception as direct_err:
+        logger.debug(
+            "Direct connect to %s failed (%s); trying account relay.", base_url, direct_err
+        )
+
+    if not client_id:
+        raise ConnectionError(
+            f"Could not connect to {base_url}.\n"
+            "No server ID stored — open the Plex browser and reconnect to your server."
+        )
+
+    # Relay path — uses plexapi's own negotiation (handles relay headers)
+    try:
+        return connect_via_account(token, client_id)
+    except Exception as relay_err:
+        raise ConnectionError(
+            f"Could not reach server directly ({direct_err}) "
+            f"or via relay ({relay_err})."
+        ) from relay_err
+
+
 # ── Music library browsing ───────────────────────────────────────────────────
+
+def get_audio_sections(server) -> list[dict]:
+    """Return all audio library sections (Music, Audiobooks, etc.) on the server.
+
+    Each dict has keys: key (str), title (str), type (str).
+    Only sections of type 'artist' are returned, as Plex uses this type for
+    both Music and Audiobook libraries.
+    """
+    return [
+        {"key": str(s.key), "title": s.title, "type": s.type}
+        for s in server.library.sections()
+        if s.type == "artist"
+    ]
+
 
 def get_music_section(server):
     """Return the first artist/music library section on the server."""
@@ -109,12 +202,27 @@ def get_music_section(server):
     return sections[0]
 
 
-def search_albums(server, query: str = "", limit: int = 500) -> list:
-    """Return Album objects matching query (or all albums if query is empty)."""
-    music = get_music_section(server)
+def get_section_by_key(server, section_key: str):
+    """Return the library section with the given key, or raise ValueError."""
+    for s in server.library.sections():
+        if str(s.key) == str(section_key):
+            return s
+    raise ValueError(f"No library section with key '{section_key}' found.")
+
+
+def search_albums(server, query: str = "", limit: int = 500, section_key: str = "") -> list:
+    """Return Album objects matching query (or all albums if query is empty).
+
+    If section_key is provided, browse that specific library section.
+    Otherwise fall back to the first music section.
+    """
+    if section_key:
+        section = get_section_by_key(server, section_key)
+    else:
+        section = get_music_section(server)
     if query:
-        return music.searchAlbums(title=query, maxresults=limit)
-    return music.albums()[:limit]
+        return section.searchAlbums(title=query, maxresults=limit)
+    return section.albums()[:limit]
 
 
 # ── Album art ─────────────────────────────────────────────────────────────────
@@ -151,6 +259,7 @@ def download_album(
     dest_dir: str,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
     is_cancelled: Optional[Callable[[], bool]] = None,
+    force_audiobook: bool = False,
 ) -> list[str]:
     """Download all tracks in *album* to *dest_dir*.
 
@@ -201,6 +310,11 @@ def download_album(
             ext = Path(server_filename).suffix.lower() if server_filename else ""
         if not ext:
             ext = ".mp3"
+
+        # When treating as audiobook, promote MP4-family containers to .m4b so
+        # pc_library recognises the track as an audiobook (stik=2 equivalent).
+        if force_audiobook and ext in {".m4a", ".m4p", ".mp4", ".aac"}:
+            ext = ".m4b"
 
         # Safe filename: disc-track title.ext
         disc = getattr(track, "discNumber", None) or 1
